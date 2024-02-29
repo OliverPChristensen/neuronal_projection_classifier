@@ -1,0 +1,23 @@
+# Folders
+
+meta/
+plots/
+presentations/
+processed_data/
+raw_data/
+wandb/
+
+# Env folders
+
+*venv*/
+*renv*/
+
+*.Rproj*
+
+# Files
+
+.DS_Store
+.Rhistory
+.Rprofile
+renv.lock
+*.code-workspace
