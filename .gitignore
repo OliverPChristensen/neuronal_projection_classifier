@@ -21,3 +21,4 @@ wandb/
 .Rprofile
 renv.lock
 *.code-workspace
+activate_project*
