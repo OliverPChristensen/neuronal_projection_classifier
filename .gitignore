@@ -6,6 +6,7 @@ presentations/
 processed_data/
 raw_data/
 wandb/
+.vscode/
 
 # Env folders
 
