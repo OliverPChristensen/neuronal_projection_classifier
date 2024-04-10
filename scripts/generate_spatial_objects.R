@@ -3,6 +3,7 @@ library(sf)
 library(tidyverse)
 library(Seurat)
 library(qs)
+library(argparse)
 
 
 load_transcripts <- function(transcripts_path){
@@ -117,7 +118,7 @@ create_seurat_molecules <- function(transcripts){
     # Output: Data frame with transcripts in Seurat format
 
     # Extract coordinates of transcripts from sf object and add trasncript ID
-    seurat_molecules <- transcripts %>% st_coordinates() %>% as.data.frame() %>% cbind(.,transcript_points$V4)
+    seurat_molecules <- transcripts %>% st_coordinates() %>% as.data.frame() %>% cbind(.,transcripts$V4)
 
     # Change column names according to the Seurat format
     colnames(seurat_molecules) <- c("x","y","gene")
@@ -156,73 +157,121 @@ create_seurat_object <- function(sparse_count_matrix, seurat_segmentations, seur
     return(spatial_obj)
 }
 
+create_parser <- function() {
+    # Input: NA
+    #
+    # Creates and outputs parser with arguments that allows interaction via CLI
+    #
+    # Output: Parser
 
+    #Define parser
+    parser <- ArgumentParser(description = "Script to generate spatial object from ROIs and transcripts data file")
 
+    #Add argumnent to parser
+    parser$add_argument("-fpt","--transcripts-folder-path", type = "character", default = 'default', help="Relative path to folder with transcripts files")
+    parser$add_argument("-fpr","--roi-folder-path", type = "character", default = 'default', help="Relative path to folder with ROIs in numpy format")
+    parser$add_argument("-fmt","--transcript-file-match", type = "character", default = '', help="Characters to be used to specify transcript files in transcript folder")
+    parser$add_argument("-fmr","--roi-file-match", type = "character", default = '', help="Characters to be used to specify roi files in roi folder")
+    parser$add_argument("-o","--output-folder-path", type = "character", default = './processed_data', help = "Relative path to folder to save output")
+    parser$add_argument("-si","--section-indices", nargs="+", type="character", default=c("A1","B1","C1","D1","A2","B2","C2","D2"), help="List of section indices to process")
+    parser$add_argument("-ri","--run-index", type="character", help="List of section indices to process")
 
-
-# Define section indices and run index
-sections <- c("A1","B1","C1","D1","A2","B2","C2","D2")
-run <- "spatial1"
-
-# Load list of transcripts files and ROIs files
-transcripts_files <- list.files(path = paste0("./raw_data/",run,"/")) %>% grep("results", ., value = TRUE)
-rois_files <- list.files(path = paste0("./processed_data/",run,"/")) %>% grep("rois", ., value = TRUE)
-
-spatial_objects = list()
-
-t <- 0
-for (section in sections){
-    # Load path to transcript file and ROIs file corresponding to current section index
-    transcript_path <- paste0("./raw_data/",run,"/",grep(section, transcripts_files, value = TRUE))
-    roi_path <- paste0("./processed_data/",run,"/",grep(section, rois_files, value = TRUE))
-
-    # Load transcripts
-    print("Loading transcripts")
-    transcript_points <- load_transcripts(transcript_path)
-    
-    # Load ROIs
-    print("Loading ROIs")
-    rois_polygons <- array_to_sf_rois(roi_path)
-
-    # Create sparse count matrix
-    print("Creating count matrix")
-    sparse_count_matrix <- create_count_matrix(transcript_points,rois_polygons)
-
-    # Create Seurat segmentation object
-    seurat_segmentations <- create_seurat_segmentations(rois_polygons,sparse_count_matrix)
-
-    # Create Seurat centroid object
-    seurat_centroids <- create_seurat_centroids(rois_polygons,sparse_count_matrix)
-
-    # Create Seurat molecules object
-    seurat_molecules <- create_seurat_molecules(transcript_points)
-
-    # Create spatial Seurat object
-    print("Creating seurat object")
-    spatial_obj <- create_seurat_object(sparse_count_matrix,seurat_segmentations,seurat_centroids,seurat_molecules,section)
-    
-    # Add section index and run index as meta data
-    print("Adding meta data")
-    spatial_obj$section <- section
-    spatial_obj$run <- run
-
-    # Extract area of cells and give cell ID names to the object
-    areas <- rois_polygons %>% st_area()
-    names(areas) <- names(rois_polygons)
-    
-    # Add the meta data to the spatial seurat object according to cell IDs
-    spatial_obj <- AddMetaData(spatial_obj,areas,"area")
-
-    # Add the spatial object of the current section to the spatial object list
-    spatial_objects[[section]] <- spatial_obj
-
-    t <- t + 1
-    print(paste0(t,"/",length(sections),": ",section," done!"))
+    return(parser)
 }
 
-print("Merging spatial seurat objects")
-merged_spatial_object <- merge(spatial_objects)
+main <- function(){
+    # Input: NA
+    #
+    # Main function that defines parser argument, loads transcripts and ROIs, creates count matrix, creates spatial seurat object, merges seurat objects across sections, saves the merged spatial seurat object
+    #
+    # Output: NA
 
-print("Saving merged spatial seurat object")
-dir.create(paste0("./processed_data/",run,"/",run,"_seurat_raw.qs"),showWarnings = FALSE)
-qsave(merged_spatial_object,paste0("./processed_data/",run,"/",run,"_seurat_raw.qs"))
+    # Create parser and parse arguments
+    parser <- create_parser()
+    args <- parser$parse_args()
+
+    # Retrieve arguments into corresponding variables
+    transcript_file_match <- args$transcript_file_match
+    roi_file_match <- args$roi_file_match
+    path_to_output_folder <- args$output_folder_path
+    section_indices <- args$section_indices
+    run_index <- args$run_index
+
+    if (args$transcripts_folder_path == "default"){
+        path_to_transcripts_folder <- paste0("./raw_data/",run_index)
+    } else {
+        path_to_transcripts_folder <- args$transcripts_folder_path
+    }
+
+    if (args$roi_folder_path == "default"){
+        path_to_roi_folder <- paste0("./processed_data/",run_index)
+    } else {
+        path_to_roi_folder <- args$roi_folder_path
+    }
+
+    # Load list of transcripts files and ROIs files
+    transcripts_files <- list.files(path = path_to_transcripts_folder) %>% grep(transcript_file_match, ., value = TRUE)
+    rois_files <- list.files(path = path_to_roi_folder) %>% grep(roi_file_match, ., value = TRUE)
+
+    spatial_objects = list()
+
+    t <- 0
+    for (section_index in section_indices){
+
+        # Load path to transcript file and ROIs file corresponding to current section index
+        transcript_path <- paste0(path_to_transcripts_folder,"/",grep(section_index, transcripts_files, value = TRUE))
+        roi_path <- paste0(path_to_roi_folder,"/",grep(section_index, rois_files, value = TRUE))
+
+        # Load transcripts
+        print("Loading transcripts")
+        transcript_points <- load_transcripts(transcript_path)
+        
+        # Load ROIs
+        print("Loading ROIs")
+        rois_polygons <- array_to_sf_rois(roi_path)
+
+        # Create sparse count matrix
+        print("Creating count matrix")
+        sparse_count_matrix <- create_count_matrix(transcript_points,rois_polygons)
+
+        # Create Seurat segmentation object
+        seurat_segmentations <- create_seurat_segmentations(rois_polygons,sparse_count_matrix)
+
+        # Create Seurat centroid object
+        seurat_centroids <- create_seurat_centroids(rois_polygons,sparse_count_matrix)
+
+        # Create Seurat molecules object
+        seurat_molecules <- create_seurat_molecules(transcript_points)
+
+        # Create spatial Seurat object
+        print("Creating seurat object")
+        spatial_obj <- create_seurat_object(sparse_count_matrix,seurat_segmentations,seurat_centroids,seurat_molecules,section_index)
+        
+        # Add section index and run index as meta data
+        print("Adding meta data")
+        spatial_obj$section_index <- section_index
+        spatial_obj$run_index <- run_index
+
+        # Extract area of cells and give cell ID names to the object
+        areas <- rois_polygons %>% st_area()
+        names(areas) <- names(rois_polygons)
+        
+        # Add the meta data to the spatial seurat object according to cell IDs
+        spatial_obj <- AddMetaData(spatial_obj,areas,"area")
+
+        # Add the spatial object of the current section to the spatial object list
+        spatial_objects[[section_index]] <- spatial_obj
+
+        t <- t + 1
+        print(paste0(t,"/",length(section_indices),": ",section_index," done!"))
+    }
+
+    print("Merging spatial seurat objects")
+    merged_spatial_object <- merge(x = spatial_objects[[1]], y = spatial_objects[-1])
+
+    print("Saving merged spatial seurat object")
+    dir.create(paste0(path_to_output_folder,"/",run_index),showWarnings = FALSE)
+    qsave(merged_spatial_object,paste0(path_to_output_folder,"/",run_index,"/",run_index,"_seurat_raw.qs"))
+}
+
+main()

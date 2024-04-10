@@ -34,7 +34,7 @@ def staining_to_rois(image):
     model = models.Cellpose(gpu=True, model_type = 'cyto')
 
     #Print device
-    print(f"{current_time()}: Device is {model.device}")
+    print(f"[{current_time()}]: Device is {model.device}")
     sys.stdout.flush()
 
     #Generate masks for image
@@ -90,26 +90,20 @@ def quality_report(image,rois,run,section):
 
                 plt.savefig(f"./plots/segmentation_report/{run}/{section}/{section}_quality_report_{i}-{j}.png")
 
-def load_dapi_polyT_pair(path_to_staining_folder,section_index):
+def load_dapi_polyT_pair(path_to_staining_folder,dapi_file_match,polyT_file_match,section_index,section_index_pairing):
+    '''
+    Input: Path to staining folder, DAPI file match string, polyT file match string, section index, dictionary with section index pairing
 
-    #Dictionary to convert between naming schemes for different sections
-    section_index_pairing = {
-        "A1": "W0",
-        "B1": "W1",
-        "C1": "W2",
-        "D1": "W3",
-        "A2": "W4",
-        "B2": "W5",
-        "C2": "W6",
-        "D2": "W7"
-    }
+    Loads DAPI path according to section index, finds corresponding polyT path using section index pairing, loads the DAPI and polyT image
 
+    Output: DAPI image as numpy array, polyT image as numpy array
+    '''
     #Load files in folder with stanings
     files = os.listdir(path_to_staining_folder)
 
     #Fetch all dapi and polyT file names
-    dapi_list = np.array([element for element in files if "DAPI" in element])
-    polyT_list = np.array([element for element in files if "Cy5" in element])
+    dapi_list = np.array([element for element in files if dapi_file_match in element])
+    polyT_list = np.array([element for element in files if polyT_file_match in element])
 
     #Find the dapi file name that matches the section index
     dapi_file = dapi_list[np.core.defchararray.find(dapi_list,section_index) > 0].item()
@@ -118,31 +112,61 @@ def load_dapi_polyT_pair(path_to_staining_folder,section_index):
     alt_section_index = section_index_pairing[section_index]
 
     #Find the polyT file name that matches the alternative section index
-    polyT_file = polyT_list[np.core.defchararray.find(polyT_list, alt_section_index) > 0]
+    polyT_file = polyT_list[np.core.defchararray.find(polyT_list, alt_section_index) > 0].item()    
 
+    #Define path to DAPI file and polyT file
     path_to_dapi_file = f"{path_to_staining_folder}/{dapi_file}"
     path_to_polyT_file = f"{path_to_staining_folder}/{polyT_file}"
-
-
+    
     #Load paired dapi and polyT stainings
     dapi_image = io.imread(path_to_dapi_file)
     polyT_image = io.imread(path_to_polyT_file)
 
-    return dapi_file, polyT_file
+    return dapi_image, polyT_image
 
+def create_parser():
+    '''
+    Input: NA
 
+    Creates and outputs parser with arguments that allows interaction via CLI
 
-def main():
+    Output: Parser
+    '''
+
+    #Define parser
     parser = argparse.ArgumentParser(description="Segmentation Pipeline")
+
+    #Add argumnent to parser
     parser.add_argument("-fp","--folder-path", type=str, default = 'default', help="Relative path to folder with stainings")
+    parser.add_argument("-dfm","--dapi-file-match", type=str, default = '', help="String to be used to specify DAPI files in stainings folder")
+    parser.add_argument("-pfm","--polyT-file-match", type=str, default = '', help="String to be used to specify polyT files in stainins folder")
+    parser.add_argument("-psi","--polyT-spatial-indices", nargs="+", type=str, default = 'default', help="String to be used to specify polyT files in stainins folder")
     parser.add_argument("-o","--output-folder-path", type=str, default = './processed_data', help="Relative path to folder to save output")
     parser.add_argument("-si","--section-indices", nargs="+", type=str, default=["A1","B1","C1","D1","A2","B2","C2","D2"], help="List of section indices to segment")
     parser.add_argument("-ri","--run-index", type=str, help="List of section indices to segment")
-    
+
+    return parser
+
+def main():
+    '''
+    Input: NA
+
+    Main function that defines parser arguments, creates section index pairing dictionary, loades DAPI and polyT image, 
+    combines them, runs cellpose on the combined image and creates ROIs from the masks outputted, save the ROIs and generate a quality report of the ROIs
+
+    Output: NA
+    '''
+
+    #Create parser and parse arguments
+    parser = create_parser()
     args = parser.parse_args()
     
+    #Define variables from parser
+    dapi_file_match = args.dapi_file_match
+    polyT_file_match = args.polyT_file_match
     path_to_output_folder = args.output_folder_path
     section_indices = args.section_indices
+    polyT_spatial_indices = args.polyT_spatial_indices
     run_index = args.run_index
 
     if args.folder_path == 'default':
@@ -150,113 +174,37 @@ def main():
     else:
         path_to_staining_folder = args.folder_path
 
+    #Dictionary to convert between naming schemes for different section index depending on polyT spatial indices
+    if polyT_spatial_indices == 'default':
+        section_index_pairing = dict(zip(section_indices, section_indices))
+    else:
+        section_index_pairing = dict(zip(section_indices, polyT_spatial_indices))
 
+    #Loop over spatial indices 
     for i, section_index in enumerate(section_indices):
-        dapi_image, polyT_image = load_dapi_polyT_pair(path_to_staining_folder,section_index)
+
+        #Load DAPI image and polyT image according to section index
+        print(f"[{current_time()}]: Loading section {section_index} from {path_to_staining_folder} ({i+1}/{len(section_indices)})")
+        sys.stdout.flush()
+        dapi_image, polyT_image = load_dapi_polyT_pair(path_to_staining_folder,dapi_file_match,polyT_file_match,section_index,section_index_pairing)
 
         #Combine dapi and polyT stainings by using average pixel value
         image = (dapi_image + polyT_image)/2
 
         #Input the combined image to staining_to_rois, which returns cell ROIs for the image
-        print(f"{current_time()}: Running cellpose on section {section_index} ({i+1}/{len(section_indices)})")
+        print(f"[{current_time()}]: Running cellpose on section {section_index} ({i+1}/{len(section_indices)})")
         sys.stdout.flush()
         rois = staining_to_rois(image)
 
         #Save the ROIs
-        print(f"{current_time()}: Saving rois for section {section_index} ({i+1}/{len(section_indices)})")
+        print(f"[{current_time()}]: Saving rois for section {section_index} to {path_to_output_folder}/{run_index} ({i+1}/{len(section_indices)})")
         sys.stdout.flush()
         np.savez(f'{path_to_output_folder}/{run_index}/{section_index}_rois.npz', **rois)
 
         #Generate quility report of the segmentation using quality_report
-        print(f"{current_time()}: Generating quality report for section {section_index} ({i+1}/{len(section_indices)})")
+        print(f"[{current_time()}]: Generating quality report for section {section_index} ({i+1}/{len(section_indices)})")
         sys.stdout.flush()
         quality_report(image, rois, run_index, section_index)
 
-
 if __name__ == "__main__":
     main()
-
-
-
-"""
-
-
-def create_rois(folder_with_stainings,run):
-    '''
-    Input: Folder with staining images, spatial run index
-
-    Loads polyT and DAPI stainings in corresponding pairs and combines them using the average pixel value
-    Forwards the image to stainings_to_rois to generate segmentation
-    Saves the ROIs and create quality report of segmentation
-
-    Output: NA
-    '''
-
-    #Dictionary to convert between naming schemes for different sections
-    name_con_dict = {
-        "W0": "A1",
-        "W1": "B1",
-        "W2": "C1",
-        "W3": "D1",
-        "W4": "A2",
-        "W5": "B2",
-        "W6": "C2",
-        "W7": "D2"
-    }
-
-    #Load files in folder with stanings
-    files = os.listdir(folder_with_stainings)
-
-    #Fetch all dapi and polyT file names
-    dapi_list = np.array([element for element in files if "DAPI" in element])
-    polyT_list = np.array([element for element in files if "Cy5" in element])
-
-    #Define variable for keys in name_con_dict to be used later
-    name_con_keys = np.array(list(name_con_dict.keys()))
-
-    #Loop over all polyT file names
-    for i, polyT_file in enumerate(polyT_list):
-
-        #Find the section index key present in the polyT file name
-        name_con_ele = name_con_keys[np.core.defchararray.find(polyT_file, name_con_keys) > 0]
-
-        #Fetch the value paired to the section index key
-        name_con_ele_pair = name_con_dict[name_con_ele.item()]
-
-        #Find the dapi file name that matches the section index value such that the dapi file paired to the polyT file is now found
-        dapi_file = dapi_list[np.core.defchararray.find(dapi_list,name_con_ele_pair) > 0][0]
-
-        #Load paired dapi and polyT stainings
-        dapi_image = io.imread(f"{folder_with_stainings}/{dapi_file}")
-        polyT_image = io.imread(f"{folder_with_stainings}/{polyT_file}")
-
-        #Combine dapi and polyT stainings by using average pixel value
-        image = (dapi_image + polyT_image)/2
-
-        #Input the combined image to staining_to_rois, which returns cell ROIs for the image
-        print(f"{current_time()}: Running cellpose on section {name_con_ele_pair} ({i+1}/{len(polyT_list)})")
-        sys.stdout.flush()
-        rois = staining_to_rois(image)
-
-        #Save the ROIs
-        print(f"{current_time()}: Saving rois for section {name_con_ele_pair} ({i+1}/{len(polyT_list)})")
-        sys.stdout.flush()
-        np.savez(f'./processed_data/{run}/{name_con_ele_pair}_rois.npz', **rois)
-
-        #Generate quility report of the segmentation using quality_report
-        print(f"{current_time()}: Generating quality report for section {name_con_ele_pair} ({i+1}/{len(polyT_list)})")
-        sys.stdout.flush()
-        quality_report(image, rois, run, name_con_ele_pair)
-
-    
-run = "spatial1"
-
-path_to_staining_folder = "./raw_data/spatial1"
-
-create_rois(folder_with_stainings,run)
-
-
-
-"""
-
-test = 2

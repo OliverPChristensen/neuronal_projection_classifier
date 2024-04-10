@@ -7,8 +7,6 @@ image = ski.io.imread('./raw_data/spatial1/Panorama_Spatial1_serie2_W3A1_Cy5-cla
 #image = io.imread('./raw_data/Panorama_EXP-2_W1A1_Cy5-class_R9_.tiff')
 #ski.io.imshow(crop_im)
 
-
-
 crop_im = image[0:2000,0:2000]
 
 blurred_image = ski.filters.gaussian(crop_im, sigma=8) 
@@ -37,7 +35,7 @@ ski.io.imsave("./plots/test2.png",image)
 
 from cellpose import models
 
-model = models.Cellpose(gpu=False, model_type = 'cyto')
+model = models.Cellpose(gpu=True, model_type = 'cyto')
 
 
 masks, flows, styles, diams = model.eval(crop_im, diameter=None, channels=[0,0],
