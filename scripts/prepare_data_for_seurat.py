@@ -12,6 +12,8 @@ from skimage import io, measure
 from cellpose import io
 from cellpose import models
 
+from roifile import ImagejRoi, roiwrite
+
 def current_time():
     '''
     Allows the current time to be added to all prints to the log, when script is run through sbatch
@@ -89,6 +91,28 @@ def quality_report(image,rois,run,section):
                 _ = ax.set_ylim(ydim*j, ydim*(j + 1))
 
                 plt.savefig(f"./plots/segmentation_report/{run}/{section}/{section}_quality_report_{i}-{j}.png")
+
+def save_rois_as_imagej(rois, path_to_output_folder, run_index, section_index):
+    '''
+    Input: ROIs in a dictionary, path to folder input, run index, section index
+
+    Converts the ROIs into imageJ format and saves them in a zip file
+
+    Output: NA
+    '''
+
+    #Convert ROIs into imageJ format
+    rois_imJ = [ImagejRoi.frompoints(outline) for _, outline in rois.items()]
+
+    #Create filename for the ROIs
+    file_name = f'{path_to_output_folder}/{run_index}/{section_index}_imagej_rois.zip'
+
+    #Check if the file already exists. This is necessary because roiwrite will append rois to an already existing file instead of overwriting it
+    if os.path.exists(file_name):
+            os.remove(file_name)
+
+    #Save the ROIs as a zip file
+    roiwrite(file_name, rois_imJ)
 
 def load_dapi_polyT_pair(path_to_staining_folder,dapi_file_match,polyT_file_match,section_index,section_index_pairing):
     '''
@@ -201,10 +225,17 @@ def main():
         sys.stdout.flush()
         np.savez(f'{path_to_output_folder}/{run_index}/{section_index}_rois.npz', **rois)
 
+        #Save the ROIs in ImageJ format
+        print(f"[{current_time()}]: Saving rois for section {section_index} in ImageJ format to {path_to_output_folder}/{run_index} ({i+1}/{len(section_indices)})")
+        sys.stdout.flush()
+        save_rois_as_imagej(rois, path_to_output_folder, run_index, section_index)
+        
+        """
         #Generate quility report of the segmentation using quality_report
         print(f"[{current_time()}]: Generating quality report for section {section_index} ({i+1}/{len(section_indices)})")
         sys.stdout.flush()
         quality_report(image, rois, run_index, section_index)
+        """
 
 if __name__ == "__main__":
     main()
