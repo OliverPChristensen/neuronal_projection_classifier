@@ -1,16 +1,30 @@
 import skimage as ski
 import matplotlib.pyplot as plt
-from cellpose import io
 import numpy as np
-
+from skimage import measure
 import cv2
 from roifile import ImagejRoi, roiwrite
+import matplotlib.patches as patches
+
+image = ski.io.imread("./raw_data/spatial1/Panorama_Spatial1_serie2_W0A1_Cy5-class_R11_.tiff")
 
 
-image = ski.io.imread('./raw_data/spatial1/Panorama_Spatial1_serie2_W0A1_GFP-class_R12_.tiff')
+mask = (image != 0).astype(np.uint8)
+contour = measure.find_contours(mask, 0.5)
+
+fig, ax = plt.subplots()
+
+ax.imshow(image)
+
+rois = {}
+for i, cont in enumerate(contour):
+    rois[str(i)] = cont[:,[1,0]]
 
 
-im_crop = image[5000:10000,5000:8000]
+np.savez("processed_data/spatial1/test.npz", **rois)
+
+
+im_crop = image[11000:15000,11000:15000]
 
 plt.imshow(im_crop)
 plt.savefig("./plots/pplot.png")
@@ -66,6 +80,9 @@ for label in range(1, np.max(masks) + 1):
     mask = (masks == label).astype(np.uint8)
     contour = measure.find_contours(mask, 0.5)
     rois[f"Cell{label}"] = contour[0][:,[1,0]] + 5000
+
+
+
 
 
 fig, ax = plt.subplots()
@@ -298,3 +315,93 @@ polygon3 = Polygon([(0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75)])
 intersection = multipolygon.intersection(polygon3)
 
 print(intersection)
+
+
+
+
+
+
+def load_dapi_polyT_pair(path_to_staining_folder,dapi_file_match,polyT_file_match,section_index,section_index_pairing):
+    '''
+    Input: Path to staining folder, DAPI file match string, polyT file match string, section index, dictionary with section index pairing
+
+    Loads DAPI path according to section index, finds corresponding polyT path using section index pairing, loads the DAPI and polyT image
+
+    Output: DAPI image as numpy array, polyT image as numpy array
+    '''
+    #Load files in folder with stanings
+    files = os.listdir(path_to_staining_folder)
+
+    #Fetch all dapi and polyT file names
+    dapi_list = np.array([file for file in files if dapi_file_match in file])
+    polyT_list = np.array([file for file in files if polyT_file_match in file])
+
+    #Find the dapi file name that matches the section index
+    dapi_file = dapi_list[np.core.defchararray.find(dapi_list,section_index) > 0].item()
+
+    #Fetch the alternative section index paired to the section index
+    alt_section_index = section_index_pairing[section_index]
+
+    #Find the polyT file name that matches the alternative section index
+    polyT_file = polyT_list[np.core.defchararray.find(polyT_list, alt_section_index) > 0].item()    
+
+    #Define path to DAPI file and polyT file
+    path_to_dapi_file = f"{path_to_staining_folder}/{dapi_file}"
+    path_to_polyT_file = f"{path_to_staining_folder}/{polyT_file}"
+    
+    #Load paired dapi and polyT stainings
+    dapi_image = io.imread(path_to_dapi_file)
+    polyT_image = io.imread(path_to_polyT_file)
+
+    return dapi_image, polyT_image
+
+
+
+
+def quality_report(image,rois,run,section):
+    '''
+    Input: Numpy array of staining image, dictionary of ROIs, spatial run index, section ID
+
+    Creates and saves multiple plots of the staining image with ROIs overload. 
+    The image is split into smaller images to be able to open them with sufficient resolution in VS Code
+
+    Output: NA
+    '''
+
+    #Define plot and add image to plot
+    fig, ax = plt.subplots()
+    _ = ax.imshow(image)
+    
+    #Add ROIs to plot
+    for roi in rois:
+        patch = patches.Polygon(rois[roi], closed=True, edgecolor='r', facecolor='none')
+        _ = ax.add_patch(patch)
+
+    #Define split on each dimension of the image
+    image_split_num = 50
+
+    #Calculate width of each split
+    xdim = int(image.shape[1]/image_split_num)
+    ydim = int(image.shape[0]/image_split_num)
+    
+    #Create folder to save plots
+    os.makedirs(f"./plots/segmentation_report/{run}/{section}",exist_ok=True)
+
+    #Generate all plots as specified by the splits. Empty images are ignored
+    for i in range(image_split_num):
+        for j in range(image_split_num):
+            
+            #Checks if cropped image is empty. If not, then save plot
+            if np.max(image[ydim*j:ydim*(j + 1),xdim*i:xdim*(i + 1)]) > 0:
+                _ = ax.set_xlim(xdim*i, xdim*(i + 1))
+                _ = ax.set_ylim(ydim*j, ydim*(j + 1))
+
+                plt.savefig(f"./plots/segmentation_report/{run}/{section}/{section}_quality_report_{i}-{j}.png")
+
+
+"""
+#Generate quility report of the segmentation using quality_report
+print(f"[{current_time()}] Generating quality report for section {section_index} ({i+1}/{len(section_indices)})")
+sys.stdout.flush()
+quality_report(image, rois, run_index, section_index)
+"""

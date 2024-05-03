@@ -25,7 +25,6 @@ def current_time():
     return cur_time.strftime("%Y-%m-%d %H:%M:%S")
 
 
-
 def load_staining(path_to_staining_folder,file_match,section_index,section_index_pairing):
     '''
     Input: Path to staining folder, File match string, Section index, dictionary with section index pairing
@@ -51,6 +50,29 @@ def load_staining(path_to_staining_folder,file_match,section_index,section_index
 
     return image
 
+
+def generate_rois_for_area_correction(image):
+    '''
+    Input: Image before grid fill
+
+    Generates ROIs for all non zero areas in the image before grid fill. 
+    This can be used to correct for overestimation of areas as a result of grid fill
+
+    Output: Dictionary with ROIs of non zero pixel value areas in the image
+    '''
+
+    #Generate mask(s) with all non-zero pixel values of the image
+    mask = (image != 0).astype(np.uint8)
+
+    #Find ROIs for the mask(s)
+    contour = measure.find_contours(mask, 0.5)
+
+    #Convert the ROIs to a dictionary format and invert axis of coordinates
+    rois = {}
+    for i, cont in enumerate(contour):
+        rois[str(i)] = cont[:,[1,0]]
+
+    return rois
 
 def fill_grids(img_array, box_size = 5, nloops = 100):
     '''
@@ -78,9 +100,9 @@ def fill_grids(img_array, box_size = 5, nloops = 100):
     return(im_copy)
 
 
-def staining_to_rois(image):
+def staining_to_rois(image,diameter):
     '''
-    Input: Numpy array of staining image
+    Input: Numpy array of staining image, diameter to use for segmentation
 
     Runs cellpose on the combined staining image
     Converts masks to dictionary of ROIs
@@ -96,8 +118,11 @@ def staining_to_rois(image):
     sys.stdout.flush()
 
     #Generate masks for image
-    masks, _, _, diams = model.eval(image, diameter=None, channels=[0,0],
+    masks, _, _, diams = model.eval(image, diameter=diameter, channels=[0,0],
                                          flow_threshold=0.4, do_3D=False)
+    
+    print(f"[{current_time()}] Diameter used for the segmentation: {diams}")
+    sys.stdout.flush()
     
     #Convert masks from image into ROIs and put them into a dictionary
     rois = {}
@@ -152,10 +177,11 @@ def create_parser():
     parser.add_argument("-nt","--name-tag", type=str, default = 'default', help="Name tag to use for output files. Default is file-match arguments")
     parser.add_argument("-o","--output-folder-path", type=str, default = './processed_data', help="Relative path to folder to save output")
     parser.add_argument("-si","--section-indices", nargs="+", type=str, default=["A1","B1","C1","D1","A2","B2","C2","D2"], help="List of section indices to segment. Default is Resolve naming scheme")
-    parser.add_argument("-ic","--index_converter", nargs="+", type=str, default='default', help="List of section indices to use that matches default naming defined in section-index argument")
-    parser.add_argument("-ic2","--index_converter2", nargs="+", type=str, default='default', help="List of section indices to use for second staining that matches default naming defined in section-index argument")
+    parser.add_argument("-ic","--index-converter", nargs="+", type=str, default='default', help="List of section indices to use that matches default naming defined in section-index argument")
+    parser.add_argument("-ic2","--index-converter2", nargs="+", type=str, default='default', help="List of section indices to use for second staining that matches default naming defined in section-index argument")
     parser.add_argument("-ri","--run-index", type=str, help="List of section indices to segment")
     parser.add_argument("-gf","--grid-fill", type=str, default = 'True', help="Fill grid in stainings before segmentation to avoid slicing of cells. (True/False)")
+    parser.add_argument("-d","--diameter", type=float, default = None, help="Diameter to use in cellpose. Default is auto-estimation of diameter")
 
     return parser
 
@@ -186,10 +212,13 @@ def main():
     index_converter2 = args.index_converter2
     run_index = args.run_index
     grid_fill = args.grid_fill
+    diameter = args.diameter
 
+    #Define name tag to be used for output files
     if name_tag == 'default':
         name_tag = f"{file_match}_{file_match2}"
         
+    #Define path to staining folder using default argument
     if args.folder_path == 'default':
         path_to_staining_folder = f"./raw_data/{run_index}"
 
@@ -214,20 +243,20 @@ def main():
         #Load and prepare image depending of segmentation type
         if seg_type == 'single':
 
-            #Load sun1 image
-            print(f"[{current_time()}] Loading staining for section {section_index} from {path_to_staining_folder} ({i+1}/{len(section_indices)})")
+            #Load single staining
+            print(f"[{current_time()}] Loading staining using {file_match} as file match for section {section_index} from {path_to_staining_folder} ({i+1}/{len(section_indices)})")
             sys.stdout.flush()
             image = load_staining(path_to_staining_folder,file_match,section_index,section_index_pairing)
 
         elif seg_type == "combined":
 
-            #Load DAPI image and polyT image according to section index
-            print(f"[{current_time()}] Loading stainings for section {section_index} from {path_to_staining_folder} ({i+1}/{len(section_indices)})")
+            #Load staining 1 and staining 2 according to their respective section index
+            print(f"[{current_time()}] Loading stainings using {file_match} and {file_match2} as file matches for section {section_index} from {path_to_staining_folder} ({i+1}/{len(section_indices)})")
             sys.stdout.flush()
             image1 = load_staining(path_to_staining_folder,file_match,section_index,section_index_pairing)
             image2 = load_staining(path_to_staining_folder,file_match2,section_index,section_index_pairing2)
 
-            #Combine dapi and polyT stainings by using average pixel value
+            #Combine stainings by using average pixel value
             print(f"[{current_time()}] Combining stainings for section {section_index} ({i+1}/{len(section_indices)})")
             sys.stdout.flush()
             image = (image1 + image2)/2
@@ -237,6 +266,16 @@ def main():
             print("Segmentation type not supported!")
 
         if grid_fill == "True":
+            #Generate rois for area correction later i spatial pipeline
+            print(f"[{current_time()}] Generating rois for area correction {section_index} ({i+1}/{len(section_indices)})")
+            sys.stdout.flush()
+            rois_area_correction = generate_rois_for_area_correction(image)
+
+            #Save rois for area correction
+            print(f"[{current_time()}] Save rois for area correction {section_index} to {path_to_output_folder}/{run_index} ({i+1}/{len(section_indices)})")
+            sys.stdout.flush()
+            np.savez(f'{path_to_output_folder}/{run_index}/{section_index}_{name_tag}_area_correction_rois.npz', **rois_area_correction)
+
             #Fill grids in staining
             print(f"[{current_time()}] Filling grids on section {section_index} ({i+1}/{len(section_indices)})")
             sys.stdout.flush()
@@ -245,12 +284,12 @@ def main():
         #Input the combined image to staining_to_rois, which returns cell ROIs for the image
         print(f"[{current_time()}] Running cellpose on section {section_index} ({i+1}/{len(section_indices)})")
         sys.stdout.flush()
-        rois = staining_to_rois(image)
+        rois = staining_to_rois(image,diameter)
 
         #Save the ROIs
         print(f"[{current_time()}] Saving rois for section {section_index} to {path_to_output_folder}/{run_index} ({i+1}/{len(section_indices)})")
         sys.stdout.flush()
-        np.savez(f'{path_to_output_folder}/{run_index}/{section_index}_{name_tag}_rois.npz', **rois)
+        np.savez(f'{path_to_output_folder}/{run_index}/{section_index}_{name_tag}_cells_rois.npz', **rois)
 
         #Save the ROIs in ImageJ format
         print(f"[{current_time()}] Saving rois for section {section_index} in ImageJ format to {path_to_output_folder}/{run_index} ({i+1}/{len(section_indices)})")
@@ -260,99 +299,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-def load_dapi_polyT_pair(path_to_staining_folder,dapi_file_match,polyT_file_match,section_index,section_index_pairing):
-    '''
-    Input: Path to staining folder, DAPI file match string, polyT file match string, section index, dictionary with section index pairing
-
-    Loads DAPI path according to section index, finds corresponding polyT path using section index pairing, loads the DAPI and polyT image
-
-    Output: DAPI image as numpy array, polyT image as numpy array
-    '''
-    #Load files in folder with stanings
-    files = os.listdir(path_to_staining_folder)
-
-    #Fetch all dapi and polyT file names
-    dapi_list = np.array([file for file in files if dapi_file_match in file])
-    polyT_list = np.array([file for file in files if polyT_file_match in file])
-
-    #Find the dapi file name that matches the section index
-    dapi_file = dapi_list[np.core.defchararray.find(dapi_list,section_index) > 0].item()
-
-    #Fetch the alternative section index paired to the section index
-    alt_section_index = section_index_pairing[section_index]
-
-    #Find the polyT file name that matches the alternative section index
-    polyT_file = polyT_list[np.core.defchararray.find(polyT_list, alt_section_index) > 0].item()    
-
-    #Define path to DAPI file and polyT file
-    path_to_dapi_file = f"{path_to_staining_folder}/{dapi_file}"
-    path_to_polyT_file = f"{path_to_staining_folder}/{polyT_file}"
-    
-    #Load paired dapi and polyT stainings
-    dapi_image = io.imread(path_to_dapi_file)
-    polyT_image = io.imread(path_to_polyT_file)
-
-    return dapi_image, polyT_image
-
-
-
-
-def quality_report(image,rois,run,section):
-    '''
-    Input: Numpy array of staining image, dictionary of ROIs, spatial run index, section ID
-
-    Creates and saves multiple plots of the staining image with ROIs overload. 
-    The image is split into smaller images to be able to open them with sufficient resolution in VS Code
-
-    Output: NA
-    '''
-
-    #Define plot and add image to plot
-    fig, ax = plt.subplots()
-    _ = ax.imshow(image)
-    
-    #Add ROIs to plot
-    for roi in rois:
-        patch = patches.Polygon(rois[roi], closed=True, edgecolor='r', facecolor='none')
-        _ = ax.add_patch(patch)
-
-    #Define split on each dimension of the image
-    image_split_num = 50
-
-    #Calculate width of each split
-    xdim = int(image.shape[1]/image_split_num)
-    ydim = int(image.shape[0]/image_split_num)
-    
-    #Create folder to save plots
-    os.makedirs(f"./plots/segmentation_report/{run}/{section}",exist_ok=True)
-
-    #Generate all plots as specified by the splits. Empty images are ignored
-    for i in range(image_split_num):
-        for j in range(image_split_num):
-            
-            #Checks if cropped image is empty. If not, then save plot
-            if np.max(image[ydim*j:ydim*(j + 1),xdim*i:xdim*(i + 1)]) > 0:
-                _ = ax.set_xlim(xdim*i, xdim*(i + 1))
-                _ = ax.set_ylim(ydim*j, ydim*(j + 1))
-
-                plt.savefig(f"./plots/segmentation_report/{run}/{section}/{section}_quality_report_{i}-{j}.png")
-
-
-"""
-#Generate quility report of the segmentation using quality_report
-print(f"[{current_time()}] Generating quality report for section {section_index} ({i+1}/{len(section_indices)})")
-sys.stdout.flush()
-quality_report(image, rois, run_index, section_index)
-"""

@@ -9,7 +9,7 @@ sys.path.append(os.getcwd())
 
 print(f"Current working directory: {os.getcwd()}")
 
-from scripts.prepare_data_for_seurat import current_time, fill_grids, staining_to_rois, save_rois_as_imagej
+from scripts.cell_segmentation_pipeline import current_time, fill_grids, staining_to_rois, save_rois_as_imagej
 
 
 
@@ -19,8 +19,7 @@ def load_sun1_staining(path_to_staining_folder,sun1_file_match,section_index,sec
  
     #Fetch all dapi and polyT file names
     sun1_list = np.array([element for element in files if sun1_file_match in element])
-    print(section_index_pairing)
-    print(section_index_pairing[section_index])
+
     #Find the dapi file name that matches the section index
     sun1_file = sun1_list[np.core.defchararray.find(sun1_list,section_index_pairing[section_index]) > 0].item()
 
