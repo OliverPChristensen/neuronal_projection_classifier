@@ -502,3 +502,278 @@ ggsave("./plots/spatialcheck.png", width = 6000, height = 7500, units = "px")
 plot(rois_cells)
 plot(rois_regions)
 # join the two using tidyverse funciton mentioned in spatial stat book or others. left join? idk check later
+
+
+### TEST ###
+
+transcript_file_match <- "results"
+cell_roi_file_match <- "cells"
+image_roi_file_match <- "area"
+region_folder_match <- "regions"
+#section_indices <- c("A1","B1","C1","D1","A2","B2","C2","D2")
+section_index <- c("A1")
+run_index <- "spatial1"
+
+raw_folder_path <- paste0("./raw_data/",run_index)
+processed_folder_path <- paste0("./processed_data/",run_index)
+############
+
+
+
+# Your vectors of samples and expectations
+samples <- c(10, 20, 15, 25)
+expectations <- c(12, 18, 17, 23)
+
+# Convert expectations to counts by multiplying by some constant
+# For example, if your expectations are rates per some unit of time, you might multiply by the total observation time
+# If your expectations are percents, you might multiply by the total sample size
+# Adjust this constant according to your specific scenario
+constant <- 1000  # Example constant
+expected_counts <- expectations * constant
+
+# Perform the Poisson test
+test_result <- poisson.test(samples, T = expected_counts)
+
+# Print the result
+print(test_result)
+
+
+sparse_count_matrix <- spatial_object$raw['counts.1']
+
+spatial_obj <- SeuratObject::CreateSeuratObject(counts = sparse_count_matrix, assay = 'raw')
+
+
+
+
+#### TEST ####
+
+transcript_file_match <- "results"
+cell_roi_file_match <- "cell_seg_cells"
+image_roi_file_match <- "area"
+sun1_file_match <- "GFP__cells"
+#section_indices <- c("A1","B1","C1","D1","A2","B2","C2","D2")
+section_index <- c("A1")
+run_index <- "spatial1"
+
+raw_folder_path <- paste0("./raw_data/",run_index)
+processed_folder_path <- paste0("./processed_data/",run_index)
+
+spatial_object_file <- "spatial1_seurat_raw.qs"
+
+qsave(spatial_object_sf, "./processed_data/spatial2/spatial_sf_test.qs")
+spatial_object_sf <- qread("./processed_data/spatial1/spatial_sf_test.qs")
+##############
+
+
+seurat_to_sf <- function(spatial_object){
+    meta_data <- spatial_object@meta.data
+        
+    #Loops that fetch the cell segmentations from the Seurat object and put them into a sf geometry
+    cell_list <- list()
+    t <- 1
+
+    for (section_index in names(spatial_object@images)){
+        print(paste0("Converting section ",section_index," to sf (",t,"/",length(names(spatial_object@images)),")"))
+        
+        coords <- GetTissueCoordinates(spatial_object@images[[section_index]], which = "segmentation")
+        
+        cell_names <- unique(coords$cell)
+        
+        for (cell_name in cell_names){
+            next_coords <- coords[coords$cell == cell_name,]
+            cell_list[[cell_name]] <- st_polygon(list(as.matrix(next_coords[,c("x","y")])))
+        }
+
+        t <- t + 1
+    }
+
+    spatial_object_sf <- st_sf(meta_data, cell_list)
+
+    return(spatial_object_sf)
+}
+
+sun1_call <- function(sun1_rois, spatial_object_sf, section_index_sub){
+    areas <- sun1_rois %>% st_area()
+    sun1_rois_size_excluded <- sun1_rois[areas > 500]
+
+    spatial_object_sf_section <- spatial_object_sf %>% filter(section_index == section_index_sub)
+    sparse_intersects <- st_intersects(spatial_object_sf_section,sun1_rois_size_excluded)
+
+    names(sparse_intersects) <- spatial_object_sf_section %>% st_geometry() %>% names() #
+    
+    #All index are above -1, so effectively turns the integer vector into a boolean
+    sun1_bol <- unlist(sparse_intersects) > -1
+    return(sun1_bol)
+
+}
+
+convert_cell_id_seurat <- function(rois, seurat_object, section_index){
+        seurat_object@meta.data %>% filter(section_index == section_index) %>% rownames() -> seurat_cell_ids
+        
+        seurat_section_integer_index <- substr(seurat_cell_ids, nchar(seurat_cell_ids), nchar(seurat_cell_ids)) %>% unique()
+        new_cell_ids <- names(rois) %>% paste0(.,"_",seurat_section_integer_index)
+
+        return(new_cell_ids)
+}
+
+spatial_object <- qread("./processed_data/spatial1/spatial1_seurat_raw_projection_call.qs")
+
+sun1 <- spatial_object@meta.data %>% filter(section_index == "A1") %>% select(sun1) %>% as.matrix()
+virus1 <- spatial_object@meta.data %>% filter(section_index == "A1") %>% select(virus1) %>% as.matrix()
+virus1 <- virus1 < 0.05/length(virus1)
+
+table(sun1,virus1)
+
+# Calculate expected counts
+expected_counts <- chisq.test(table(sun1,virus))$expected
+fisher.test(table(sun1,virus))
+
+
+sun1 <- spatial_object@meta.data %>% filter(section_index == "A2") %>% select(sun1) %>% as.matrix()
+virus2 <- spatial_object@meta.data %>% filter(section_index == "A2") %>% select(virus1) %>% as.matrix()
+virus2 <- virus2 < 0.05/length(virus2)
+
+table(sun1,virus2)
+
+# Calculate expected counts
+expected_counts <- chisq.test(table(sun1,virus2))$expected
+fisher.test(table(sun1,virus2))
+
+
+
+
+array_to_sf_rois <- function(rois_path){
+    # Input: Path to rois file saved in numpys npz format
+    #
+    # Loads rois as numpy arrays and converts them to sfc objects containing rois as POLYGON geometries
+    #
+    # Output: sfc object containing ROIs as POLYGON geometries
+
+    # Import numpy module
+    np <- import("numpy")
+
+    # Load rois as arrays
+    arrays <- np$load(rois_path)
+
+    # Convert rois to a list of POLYGON objects
+    rois <- list()
+    for (roi in arrays$files){
+        roi_coords <- arrays$get(roi)
+
+        # Closing the roi coords
+        roi_coords_closed <- rbind(roi_coords,roi_coords[1,])
+        rois[[roi]] <- st_polygon(list(roi_coords_closed))
+    }
+    rois_sfc <- rois %>% st_sfc()
+
+    rois_valid <- rois_sfc[st_is_valid(rois_sfc)]
+    # Convert the list of polygons to sfc object and return the object
+    return(rois_valid)
+}
+rois_path <- "./processed_data/spatial1/A2_cell_seg_cells_rois.npz"
+
+cells <- array_to_sf_rois("./processed_data/spatial1/A1_cell_seg_cells_rois.npz")
+
+
+
+
+
+
+spatial_object <- qread("./processed_data/spatial1/spatial1_seurat_raw.qs")
+
+
+head(spatial_object)
+
+
+# Visualize QC metrics as a violin plot
+VlnPlot(spatial_object, features = c("nFeature_raw", "nCount_raw", "area"), ncol = 3)
+
+spatial_object@meta.data[spatial_object$area > 15000,]
+
+spatial_object@meta.data$area %>% quantile(., c(0.01,0.99)) -> aq
+
+spatial_object$aq <- spatial_object$area < aq
+
+spatial_object$test <- spatial_object$nCount_raw < 10
+
+DefaultBoundary(spatial_object[["A2"]]) <- "segmentation"
+ImageDimPlot(spatial_object, 
+             fov = "A2",
+             axes = F, 
+             dark.background = T, 
+             size = 1.5,
+             border.color = "black", 
+             border.size = 0.1, 
+             cols = "polychrome",
+             group.by = "test",
+             #cells = WhichCells(spatial_object, expression = prediction.score.super.major.cell.type > 0.9),
+            #molecules = c("Agrp","Glp1r")
+)
+
+ggsave("./plots/spatialcheck.png", width = 6000, height = 7500, units = "px")
+
+table(spatial_object$nCount_raw < 10, spatial_object$area < aq)
+
+
+
+spatial_object <- qread("./processed_data/spatial1/C1_spatial_object_projection_call.qs")
+
+
+sun1 <- spatial_object@meta.data %>% select(sun1) %>% as.matrix()
+virus1 <- spatial_object@meta.data %>% select(virus1) %>% as.matrix()
+virus1_corrected <- virus1 < 0.05/(length(virus1)*2)
+virus2 <- spatial_object@meta.data %>% select(virus2) %>% as.matrix()
+virus2_corrected <- virus2 < 0.05/(length(virus2)*2)
+virus_corrected <- virus1_corrected | virus2_corrected
+
+table(sun1,virus_corrected)
+
+# Calculate expected counts
+chisq.test(table(sun1,virus_corrected))$expected
+fisher.test(table(sun1,virus_corrected))
+
+
+
+library('tidyverse')
+library('Seurat')
+library('qs')
+
+neurons <- qread('./raw_data/7plex_neurons_filtered_labelled.qs')
+
+head(neurons)
+
+sum(neurons$infected == FALSE)
+sum(neurons$infected == TRUE)
+
+neurons$v147
+
+#CR: cell ranger
+#TS: Tap seq
+#Lane: pos or neg
+
+unique(neurons$sort)
+
+table(neurons$sort)
+neurons@meta.data %>% ggplot() + geom_density(aes(x = as.numeric(sort)))
+
+neurons$lane[10000 + 1:100]
+neurons$sort[10000 + 1:100]
+
+
+ord <- order(unique(neurons@meta.data[,c("area","sort")])[,2])
+
+unique(neurons@meta.data[,c("area","sort")])[ord,]
+
+
+t <- as_tibble(table(neurons@meta.data[,c("area","sort")]))
+
+t %>% filter(n > 0) %>% arrange(sort,n) -> t
+
+print(t,n = 100)
+
+#CEA High and low prob
+#BST High and low prob
+#Måske PVH, men ikke så mange gode negativer
+
+neurons@meta.data %>% filter(area == 'CEA', sort == 1) %>% ggplot() + geom_histogram(aes(x = v147))
+neurons@meta.data %>% filter(area == 'PVH', sort == 1) %>% ggplot() + geom_histogram(aes(x = v147))
