@@ -5,7 +5,7 @@
 #SBATCH --error=/projects/cbmr_shared/people/wqc597/neuronal_projection_classifier/processed_data/segmentation_logs/%j_error.log
 
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=150G
+#SBATCH --mem=50G
 #SBATCH --time=20-00:00:00
 
 cd /projects/cbmr_shared/people/wqc597/neuronal_projection_classifier

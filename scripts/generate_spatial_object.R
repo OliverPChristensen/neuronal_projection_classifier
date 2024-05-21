@@ -7,6 +7,17 @@ library(argparse)
 library(RImageJROI)
 
 
+current_time <- function(){
+    # Input: NA
+    #
+    # Extract and format current time
+    #
+    # Output: Current time
+
+    # Extract and format current time
+    return(paste0("[",format(Sys.time(), format = "%Y-%m-%d %H:%M:%S"),"]"))
+}
+
 load_transcripts <- function(transcripts_path){
     # Input: Path to transcript file
     #
@@ -309,36 +320,36 @@ main <- function(){
     run_index <- args$run_index
     section_index <- args$section_index
         
-    cat(paste0("Generating spatial object for section ",section_index,"\n"))
+    cat(paste0(current_time()," Generating spatial object for section ",section_index,"\n"))
 
     # Define boolean to indicate if area correction and region annotation should be performed respectively
     is_image = !is.null(image_roi_path)
-    cat(paste0("Performing area correction: ", is_image,"\n"))
+    cat(paste0(current_time()," Performing area correction: ", is_image,"\n"))
     is_region = !is.null(region_path)
-    cat(paste0("Performing region annotation: ", is_region,"\n"))
+    cat(paste0(current_time()," Performing region annotation: ", is_region,"\n"))
 
     # Load transcripts
-    cat(paste0("Loading transcripts from ",transcript_path,"\n"))
+    cat(paste0(current_time()," Loading transcripts from ",transcript_path,"\n"))
     transcript_points <- load_transcripts(transcript_path)
     
     # Load cell ROIs
-    cat(paste0("Loading cell ROIs from ",cell_roi_path,"\n"))
+    cat(paste0(current_time()," Loading cell ROIs from ",cell_roi_path,"\n"))
     rois_cells <- array_to_sf_rois(cell_roi_path)
 
     if (is_image){
         # Load image ROIs
-        cat(paste0("Loading image ROIs from ", image_roi_path,"\n"))
+        cat(paste0(current_time()," Loading image ROIs from ", image_roi_path,"\n"))
         rois_image <- array_to_sf_rois(image_roi_path)
     }
     
     if (is_region){
         # Load image ROIs
-        cat(paste0("Loading region ROIs from ", region_path,"\n"))
+        cat(paste0(current_time()," Loading region ROIs from ", region_path,"\n"))
         rois_regions <- regions_to_sf_rois(region_path)
     }
     
     # Create sparse count matrix
-    cat("Creating count matrix\n")
+    cat(paste0(current_time()," Creating count matrix\n"))
     sparse_count_matrix <- create_count_matrix(transcript_points,rois_cells)
 
     # Create Seurat segmentation object
@@ -351,24 +362,32 @@ main <- function(){
     seurat_molecules <- create_seurat_molecules(transcript_points)
 
     # Create spatial Seurat object
-    cat("Creating seurat object\n")
+    cat(paste0(current_time()," Creating seurat object\n"))
     spatial_obj <- create_seurat_object(sparse_count_matrix,seurat_segmentations,seurat_centroids,seurat_molecules,section_index)
     
     # Add section index and run index as meta data
-    cat("Adding meta data:\n")
-    cat(" -Section index\n")
+    cat(paste0(current_time()," Adding meta data:\n"))
+    cat(paste0(current_time(),"  - Section index\n"))
     spatial_obj$section_index <- section_index
-    cat(" -Run index\n")
+    
+    cat(paste0(current_time(),"  - Run index\n"))
     spatial_obj$run_index <- run_index
+
+    cat(paste0(current_time(),"  - Section count\n"))
+    spatial_obj$section_count <- nrow(transcript_points)
 
     if (is_image){
         # Extract area of cells and correct for overestimation from grid fill
-        cat(" -Corrected area\n")
+        cat(paste0(current_time(),"  - Corrected area\n"))
         areas <- extract_corrected_area(rois_cells,rois_image)
+
+        # Calculate total area in the section
+        cat(paste0(current_time(),"  - Section area\n"))
+        spatial_obj$section_area <- rois_image %>% st_combine() %>% st_area()
 
     } else {
         # Extract area of cells and give cell ID names to the object
-        cat(" -Area\n")
+        cat(paste0(current_time(),"  - Area\n"))
         areas <- rois_cells %>% st_area()
         names(areas) <- names(rois_cells)
     }
@@ -378,14 +397,14 @@ main <- function(){
 
     if (is_region){
         # Annotate each cell with a region
-        cat(" -Region annotation\n")
+        cat(paste0(current_time(),"  - Region annotation\n"))
         regions <- region_annotation(rois_cells, rois_regions)
         # Add the region meta data to the spatial seurat object according to cell IDs
         spatial_obj$region <- NA
         spatial_obj <- AddMetaData(spatial_obj,regions,"region")
     }
 
-    cat(paste0("Saving spatial seurat object to ", path_to_output_folder,"/",section_index,"_spatial_object_raw.qs","\n"))
+    cat(paste0(current_time()," Saving spatial seurat object to ", path_to_output_folder,"/",section_index,"_spatial_object_raw.qs","\n"))
     dir.create(paste0(path_to_output_folder),showWarnings = FALSE)
     qsave(spatial_obj,paste0(path_to_output_folder,"/",section_index,"_spatial_object_raw.qs"))
 }

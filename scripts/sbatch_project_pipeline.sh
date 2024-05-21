@@ -11,7 +11,7 @@
 cd /projects/cbmr_shared/people/wqc597/neuronal_projection_classifier
 source activate_project_neuronal_projection_classifier
 
-snakemake -s scripts/project_pipeline.snakefile -j 30 --latency-wait 60
+snakemake -s scripts/project_pipeline.snakefile -j 30 --latency-wait 60 -R merge_qc_norm_integrate_spatial_object
 
 pid=$!
 wait $pid

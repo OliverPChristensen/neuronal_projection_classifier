@@ -6,7 +6,7 @@ library(RImageJROI)
 library(progress)
 library(terra)
 library(reticulate)
-
+library(ggExtra)
 spatial_object <- qread("./processed_data/spatial1/spatial1_seurat_raw.qs")
 
 
@@ -616,31 +616,6 @@ convert_cell_id_seurat <- function(rois, seurat_object, section_index){
         return(new_cell_ids)
 }
 
-spatial_object <- qread("./processed_data/spatial1/spatial1_seurat_raw_projection_call.qs")
-
-sun1 <- spatial_object@meta.data %>% filter(section_index == "A1") %>% select(sun1) %>% as.matrix()
-virus1 <- spatial_object@meta.data %>% filter(section_index == "A1") %>% select(virus1) %>% as.matrix()
-virus1 <- virus1 < 0.05/length(virus1)
-
-table(sun1,virus1)
-
-# Calculate expected counts
-expected_counts <- chisq.test(table(sun1,virus))$expected
-fisher.test(table(sun1,virus))
-
-
-sun1 <- spatial_object@meta.data %>% filter(section_index == "A2") %>% select(sun1) %>% as.matrix()
-virus2 <- spatial_object@meta.data %>% filter(section_index == "A2") %>% select(virus1) %>% as.matrix()
-virus2 <- virus2 < 0.05/length(virus2)
-
-table(sun1,virus2)
-
-# Calculate expected counts
-expected_counts <- chisq.test(table(sun1,virus2))$expected
-fisher.test(table(sun1,virus2))
-
-
-
 
 array_to_sf_rois <- function(rois_path){
     # Input: Path to rois file saved in numpys npz format
@@ -777,3 +752,396 @@ print(t,n = 100)
 
 neurons@meta.data %>% filter(area == 'CEA', sort == 1) %>% ggplot() + geom_histogram(aes(x = v147))
 neurons@meta.data %>% filter(area == 'PVH', sort == 1) %>% ggplot() + geom_histogram(aes(x = v147))
+
+
+
+
+
+
+spatial_object1 <- qread("./processed_data/spatial2/C1_spatial_object_raw.qs")
+spatial_object2 <- qread("./processed_data/spatial1/A1_spatial_object_raw.qs")
+spatial_object3 <- qread("./processed_data/spatial2/A1_spatial_object_raw.qs")
+
+
+sun1 <- spatial_object@meta.data %>% select(sun1) %>% as.matrix()
+virus1 <- spatial_object@meta.data %>% select(virus1) %>% as.matrix()
+virus1_corrected <- virus1 < 0.05/(length(virus1)*2)
+virus2 <- spatial_object@meta.data %>% select(virus2) %>% as.matrix()
+virus2_corrected <- virus2 < 0.05/(length(virus2)*2)
+virus_corrected <- virus1_corrected | virus2_corrected
+
+table(sun1,virus_corrected)
+
+# Calculate expected counts
+chisq.test(table(sun1,virus_corrected))$expected
+fisher.test(table(sun1,virus_corrected))
+
+test <- list("C1" = spatial_object1, "A1" = spatial_object2, "B1" = spatial_object3)
+spatial_object <- merge(x = test[[1]], y = test[-1], add.cell.ids = names(test))
+
+colnames(spatial_object)
+
+spatial_object@meta.data %>% ggplot() + geom_density(aes(x = area, col = section_index)) + facet_grid(1 ~ run_index)
+spatial_object@meta.data %>% ggplot() + geom_density(aes(x = area, col = run_index))
+
+spatial_object@meta.data %>% ggplot() + geom_density(aes(x = nCount_raw, col = section_index)) + facet_grid(1 ~ run_index)
+spatial_object@meta.data %>% ggplot() + geom_density(aes(x = nCount_raw, col = run_index))
+
+ntrans <- spatial_object2$section_count %>% unique()
+total_area <- spatial_object2$section_area %>% unique()
+
+ntrans/total_area
+
+
+load_transcripts <- function(transcripts_path){
+    # Input: Path to transcript file
+    #
+    # Loades the transcript file, removes false positive (FP) transripts and creates a sf object from the trasncript dataframe
+    #
+    # Output: transcripts as a sf object with POINT geometries
+
+    # Read transcripts file and remove false positive transcripts
+    transcripts <- read.table(transcripts_path, header = F, sep = "\t") %>% filter(!str_detect(V4, "FP "))
+
+    # Creates sf object from transcript data frame with POINT geometries
+    transcript_points <- transcripts %>% st_as_sf(.,coords= c("V1","V2"))
+    
+    return(transcript_points)
+}
+
+transcripts <- read.table("raw_data/spatial1/Spatial1_serie2_serie2_A1-1_results.txt", header = F, sep = "\t") %>% filter(!str_detect(V4, "FP "))
+
+nrow(transcripts)
+nrow(transcripts_sf)
+
+
+merge_spatial_objects <- function(spatial_paths_list){
+    
+    run_indices <- c("spatial1", "spatial2", "spatial3")
+
+    merged_spatial_objects <- list()
+
+    for (run_index in run_indices){
+        
+        spatial_paths_list_run <- grep(run_index, spatial_paths_list, value = TRUE)
+        print(spatial_paths_list_run)
+        spatial_objects <- list()
+
+        t <- 0
+
+        for (spatial_object_path in spatial_paths_list_run){
+            cat(paste0("Loading spatial object ",t,"/",length(spatial_paths_list_run)," from ",spatial_object_path,"\n"))
+            # Load spatial seurat object to use for projection calls
+            t <- t + 1
+            spatial_objects[[t]] <- qread(spatial_object_path)
+        }
+
+        cat("Merging spatial seurat objects\n")
+        merged_spatial_objects[[run_index]] <- merge(x = spatial_objects[[1]], y = spatial_objects[-1])
+    }
+
+    return(merged_spatial_objects)
+}
+
+
+
+image_rois_files <- list.files(path = ) %>% grep(image_roi_file_match, ., value = TRUE)
+
+
+
+# Define your placeholder
+placeholder <- c("A", "B", "C", "D", "E")
+
+run_indices <- c("spatial1", "spatial2", "spatial3")
+section_indices <- c("A1", "B1", "C1", "D1", "A2", "B2", "C2", "D2")
+combinations <- expand.grid(run_indices, section_indices)
+# Create vector of strings
+vector_of_strings <- paste0("processed_data/",combinations$Var1,"/",combinations$Var2,"_spatial_object_projection_call.qs")
+
+test <- merge_spatial_objects(vector_of_strings)
+
+
+
+test <- spatial_object@meta.data %>% group_by(section_index, run_index) %>% summarise(sum_area = unique(section_area), sum_count = unique(section_count))
+
+
+
+test <- list("a" = 2, "b" = 4)
+
+for (t in names(test)){
+  print(t)
+}
+
+
+
+run_indices <- c("spatial1", "spatial2", "spatial3")
+section_indices <- c("A1", "B1", "C1", "D1", "A2", "B2", "C2", "D2")
+combinations <- expand.grid(run_indices, section_indices)
+# Create vector of strings
+paths <- paste0("processed_data/",combinations$Var1,"/",combinations$Var2,"_spatial_object_projection_call.qs")
+
+
+spatial_paths_list_run <- grep("A1", paths, value = TRUE) %>% grep("spatial1", ., value = TRUE)
+
+
+
+
+spatial_object_list <- merge_spatial_objects(paths)
+
+check_section_run_effect(spatial_object_list)
+
+
+spatial_objects_meta_data <- data.frame()
+
+for (spatial_object in spatial_object_list){
+  print(spatial_object)
+  spatial_objects_meta_data <- rbind(spatial_objects_meta_data,spatial_object@meta.data)
+}
+
+spatial_object@meta.data
+
+
+
+p <- spatial_object1@meta.data %>% ggplot() + geom_density(aes(x = nCount_raw)) %>% ggplot_build(.)
+
+density_values <- ggplot_build(spatial_object1@meta.data %>% ggplot() + geom_density(aes(x = nCount_raw)))$data
+
+y <- density_values[[1]]$y
+x <- density_values[[1]]$x
+
+
+x[which.max(y)]
+
+
+plot(x,y)
+
+test <- density(smoothed_data, bw = 0.5,na.rm = TRUE)
+
+data.frame(x = test$x, y = test$y) %>% ggplot() + geom_line(aes(x = x, y = y)) + xlim(0,100)
+
+
+
+RNA.object[["integrated.adt"]] <- CreateAssayObject(data = adt.data )
+
+print(1e6/3)
+
+log1p()
+
+
+test <- t(t(spatial_object1[['raw']]$counts) / spatial_object1$area)*1e4
+
+test2 <- log1p(t(t(spatial_object1[['raw']]$counts) / spatial_object1$area)*1e4)
+
+log1p(test[1,20])
+test2[1,20]
+
+test == test2
+
+
+nrow(spatial_object1@meta.data)
+
+spatial_object1 <- NormalizeData(object = spatial_object1)
+
+spatial_object1[['raw']]$norm_data2 <- log1p(t(t(spatial_object1[['raw']]$counts) / spatial_object1$area)*1e4)
+nrow(spatial_object1@meta.data)
+
+Layers(spatial_object)
+
+test <- ScaleData(spatial_object1, features = rownames(spatial_object1))
+ncol(test[['raw']]$counts.2)
+test <- RunPCA(test, features = rownames(test))
+
+
+
+obj <- spatial_object
+
+obj <- NormalizeData(obj)
+obj <- FindVariableFeatures(obj)
+obj <- ScaleData(obj)
+obj <- RunPCA(obj)
+
+
+ncol(obj[['raw']]$data.1) + ncol(obj[['raw']]$data.2) + ncol(obj[['raw']]$data.3)
+ncol(obj[['raw']]$scale.data)
+
+ncol(test[['raw']]$norm_data1)
+
+spatial_object@meta.data %>% filter(section_index == 'C1', run_index == 'spatial2') %>% select(area) %>% as.matrix() %>% as.numeric() -> areas1
+spatial_object@meta.data %>% filter(section_index == 'A1', run_index == 'spatial1') %>% select(area) %>% as.matrix() %>% as.numeric() -> areas2
+spatial_object@meta.data %>% filter(section_index == 'A1', run_index == 'spatial2') %>% select(area) %>% as.matrix() %>% as.numeric() -> areas3
+spatial_object[['raw']]$norm_data1 <- log1p(t(t(spatial_object[['raw']]$counts.1) / areas1)*1e4)
+spatial_object[['raw']]$norm_data2 <- log1p(t(t(spatial_object[['raw']]$counts.2) / areas2)*1e4)
+spatial_object[['raw']]$norm_data3 <- log1p(t(t(spatial_object[['raw']]$counts.3) / areas3)*1e4)
+
+test <- ScaleData(spatial_object, features = rownames(spatial_object))
+
+class(areas1)
+class(spatial_object$area)
+
+
+test <- Layers(spatial_object)[1]
+
+spatial_object[['raw']][test]
+spatial_object[['raw']]$counts.1
+
+test <- list(a = 1, b = 2)
+
+
+
+
+spatial_object1 <- qread("./processed_data/spatial2/C1_spatial_object_raw.qs")
+spatial_object2 <- qread("./processed_data/spatial1/A1_spatial_object_raw.qs")
+spatial_object3 <- qread("./processed_data/spatial2/A1_spatial_object_raw.qs")
+
+spatial_object1 <- area_normalize_data(spatial_object1,1e4)
+spatial_object2 <- area_normalize_data(spatial_object2,1e4)
+spatial_object3 <- area_normalize_data(spatial_object3,1e4)
+
+test <- list("C1" = spatial_object1, "A1" = spatial_object2, "B1" = spatial_object3)
+
+spatial_object <- merge(x = test[[1]], y = test[-1])
+
+spatial_object <- ScaleData(spatial_object, features = rownames(spatial_object))
+
+count_matrix <- spatial_object[['raw']]['scale.data']
+
+pca <- prcomp(t(count_matrix))
+
+summary(pca)
+pca$x[,1]
+
+
+spatial_object1 <- qread("processed_data/spatial1/A1_spatial_object_projection_call.qs")
+
+
+
+library(Matrix)
+# Creating a sparse matrix
+sparse_matrix <- Matrix(c(1, 0, 0, 2, 0, 3, 0, 0, 4), nrow = 3, sparse = TRUE)
+print(sparse_matrix)
+class(sparse_matrix)
+t(sparse_matrix)
+
+
+    ### Plots of count differences between sections and runs (pga permeabilitetsforskelle, eller forskelle i størrelse af celler?)
+    ### Plot area forskelle for at se om det evt forskelle i counts kan skyldes forskelle i area. Evt udregne en mean count pr areal for hver section?
+    ### Hvis ikke area og count forskelle saa er area norm klart det bedste. Hvis forskelle i disse saa count normalisering og saa haabe at probe set er represntativt og ikke biased. Vigtigst ift projecting and non projecting neurons
+    ### SC tranform vs ikke sc transform? Kommer an paa om den valgte normalisering er effektiv eller om der stadig er effekter der ikke er normallisieret ud
+
+    # Normalisering
+
+
+
+current_time <- function(){
+  return(paste0("[",format(Sys.time(), format = "%Y-%m-%d %H:%M:%S"),"]"))
+}
+
+current_time()
+
+
+### TEST ###
+
+    run_indices <- c("spatial1", "spatial2", "spatial3")
+    section_indices <- c("A1", "B1", "C1", "D1", "A2", "B2", "C2", "D2")
+    combinations <- expand.grid(run_indices, section_indices)
+    # Create vector of strings
+    spatial_object_paths <- paste0("processed_data/",combinations$Var1,"/",combinations$Var2,"_spatial_object_projection_call.qs")
+
+    path_to_output_folder <- "processed_data"
+
+    ############
+
+quality_control_pr_spatial_object <- function(spatial_object_list){
+
+    for (spatial_object_name in names(spatial_object_list)){
+        spatial_object <- spatial_object_list[[spatial_object_name]]
+        area_quantiles <- quantile(spatial_object$area, c(0.01,0.99))
+        spatial_object <- subset(spatial_object, subset = nCount_raw > 10 & area > area_quantiles[1] & area < area_quantiles[2])
+
+        spatial_object_list[[spatial_object_name]] <- spatial_object
+    }
+
+    return(spatial_object_list)
+}
+
+
+
+spatial_object1 <- qread("processed_data/spatial1/A1_spatial_object_projection_call.qs")
+
+counts <- spatial_object1[['raw']]$counts
+
+rownames(counts)
+colnames(counts)
+
+counts_non_virus <- counts[!rownames(counts) %in% c("p147-mCherry-2A-iCre","p36-NLS-Cre"),]
+
+
+spatial_object1[['raw']]$non_virus <- counts_non_virus
+
+rownames(spatial_object1[['raw']]$non_virus)
+
+rownames(counts_non_virus)
+colnames(counts_non_virus)
+
+
+rowSums(counts_non_virus)
+colSums(counts_non_virus)
+
+colSums(counts_non_virus > 0)
+
+
+
+t <- tibble(x = 1:100, y = rnorm(100),z = rep(1:10,10))
+
+p <- t %>% ggplot() + geom_point(aes(x = x, y = y, color = as.factor(z)))
+
+p2 <- ggMarginal(p, type="density")
+
+ggsave(paste0("plots","/","test.png"),p2)
+
+
+
+# Install and load the necessary packages
+
+install.packages("cowplot")
+
+library(ggplot2)
+library(cowplot)
+
+# Create some example data with groups
+set.seed(123)
+df <- data.frame(
+  x = rnorm(300),
+  y = rnorm(300),
+  group = factor(rep(1:3, each = 100))
+)
+
+# Create the base scatter plot
+scatter_plot <- ggplot(df, aes(x = x, y = y, color = group)) +
+  geom_point() +
+  theme_minimal()
+
+# Create the density plots
+x_density <- ggplot(df, aes(x = x, color = group)) +
+  geom_density() +
+  theme_void() +
+  theme(legend.position = "none")
+
+y_density <- ggplot(df, aes(x = y, color = group)) +
+  geom_density() +
+  coord_flip() +
+  theme_void() +
+  theme(legend.position = "none")
+
+# Align the plots
+aligned_plots <- align_plots(x_density, scatter_plot, y_density, align = "hv", axis = "tblr")
+
+# Arrange the plots into a single plot
+final_plot <- plot_grid(
+  aligned_plots[[1]], NULL,
+  aligned_plots[[2]], aligned_plots[[3]],
+  ncol = 2, nrow = 2,
+  rel_widths = c(3, 1),
+  rel_heights = c(1, 3)
+)
+

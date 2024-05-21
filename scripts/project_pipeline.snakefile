@@ -14,31 +14,32 @@ ic = dict(zip(section_indices, indices_converter))
 
 rule all:
     input:
-        expand("processed_data/{run_index}/spatial_object_merged.qs", run_index=run_indices),
+        "processed_data/spatial_object_preprocessed.qs",
         #expand("processed_data/{run_index}/{section_index}_spatial_object_projection_call.qs", run_index = run_indices, section_index = section_indices),
         expand("processed_data/{run_index}/{section_index}_cell_seg_imagej_rois.zip", run_index = run_indices, section_index = section_indices),
         expand("processed_data/{run_index}/{section_index}_sun1_imagej_rois.zip", run_index = run_indices, section_index = section_indices),
         expand("processed_data/{run_index}/{section_index}_sun1_area_correction_rois.npz", run_index = run_indices, section_index = section_indices)
 
-rule spatial_merge:
+rule merge_qc_norm_integrate_spatial_object:
     input:
         spatial_objects = expand("processed_data/{run_index}/{section_index}_spatial_object_projection_call.qs",run_index = run_indices, section_index=section_indices)
         #spatial_objects = processed_data/{run_index}/{section_index}_spatial_object_projection_call.qs"
     output:
-        "processed_data/{run_index}/spatial_object_merged.qs"
+        "processed_data/spatial_object_preprocessed.qs"
     shell:
-        "Rscript scripts/spatial_merge.R -o processed_data/{run_index} -f {input.spatial_objects}"
+        """
+        sbatch --wait scripts/sbatch_merge_qc_norm_integrate_spatial_object.sh processed_data "{input.spatial_objects}"
+        """
 
 rule spatial_projection_call:
     input: 
         spatial_object = "processed_data/{run_index}/{section_index}_spatial_object_raw.qs",
         transcripts = lambda wildcards: fetch_file_path("raw_data/" + wildcards.run_index, "results",wildcards.section_index),
         cells = "processed_data/{run_index}/{section_index}_cell_seg_cells_rois.npz",
-        image = "processed_data/{run_index}/{section_index}_cell_seg_area_correction_rois.npz",
         sun1 = "processed_data/{run_index}/{section_index}_sun1_cells_rois.npz",
     output: "processed_data/{run_index}/{section_index}_spatial_object_projection_call.qs"
     shell:
-        "sbatch --wait scripts/sbatch_spatial_projection_call.sh processed_data/{wildcards.run_index} {input.spatial_object} {input.transcripts} {input.cells} {input.image} {input.sun1} {wildcards.run_index} {wildcards.section_index}"
+        "sbatch --wait scripts/sbatch_spatial_projection_call.sh processed_data/{wildcards.run_index} {input.spatial_object} {input.transcripts} {input.cells} {input.sun1} {wildcards.run_index} {wildcards.section_index}"
 
 rule generate_spatial_object:
     input: 
