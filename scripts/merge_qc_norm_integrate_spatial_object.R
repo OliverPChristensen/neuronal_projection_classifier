@@ -202,31 +202,39 @@ pca_plot <- function(spatial_object,index_name,pca,variance_df,first_pc, second_
     pca_df_shuffled <- pca_df[sample(nrow(pca_df)), ]
 
     # Plot the specified principle components
-    plot <- ggplot(pca_df_shuffled, aes(x = PC1, y = PC2, color = index, size = 1)) +
-        geom_point() +
+    plot <- ggplot(pca_df_shuffled, aes(x = PC1, y = PC2, color = index)) +
+        geom_point(size = 1) +
         xlab(paste("PC",first_pc," (", round(variance_df$prop_variance[1] * 100, 2), "% Variance)", sep = "")) +
         ylab(paste("PC",second_pc," (", round(variance_df$prop_variance[2] * 100, 2), "% Variance)", sep = "")) + 
-        labs(color = index_name)
+        labs(color = index_name) +
+        theme_classic()
 
     # Create the density plots for x axis of PCA plot
     x_density <- ggplot(pca_df_shuffled, aes(x = PC1, color = index)) +
         geom_density() +
-        theme_minimal() +
-        theme(legend.position = "none")
+        theme_classic() +
+        theme(legend.position = "none") + 
+        theme(axis.title.x = element_blank())
 
     # Create the density plots for y axis of PCA plot
     y_density <- ggplot(pca_df_shuffled, aes(x = PC2, color = index)) +
         geom_density() +
         coord_flip() +
-        theme_minimal() +
-        theme(legend.position = "none")
+        theme_classic() +
+        theme(legend.position = "none") + 
+        theme(axis.title.y = element_blank())
+
+
+    # Create an empty plot with a white background for the top right corner
+    empty_plot <- ggplot() + 
+        theme_classic()
 
     # Align the plots
     aligned_plots <- align_plots(x_density, plot, y_density, align = "hv", axis = "tblr")
 
     # Arrange the plots into a single plot
     final_plot <- plot_grid(
-        aligned_plots[[1]], NULL,
+        aligned_plots[[1]], empty_plot,
         aligned_plots[[2]], aligned_plots[[3]],
         ncol = 2, nrow = 2,
         rel_widths = c(3, 1),

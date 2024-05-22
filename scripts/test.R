@@ -1116,32 +1116,85 @@ df <- data.frame(
   group = factor(rep(1:3, each = 100))
 )
 
-# Create the base scatter plot
+# Create the base scatter plot with a white background
 scatter_plot <- ggplot(df, aes(x = x, y = y, color = group)) +
   geom_point() +
-  theme_minimal()
+  theme_classic()
 
-# Create the density plots
-x_density <- ggplot(df, aes(x = x, color = group)) +
-  geom_density() +
-  theme_void() +
-  theme(legend.position = "none")
 
-y_density <- ggplot(df, aes(x = y, color = group)) +
-  geom_density() +
+# Create the density plots with a white background
+x_density <- ggplot(df, aes(x = x, fill = group)) +
+  geom_density(alpha = 0.5) +
+  theme_classic()
+
+
+y_density <- ggplot(df, aes(x = y, fill = group)) +
+  geom_density(alpha = 0.5) +
   coord_flip() +
-  theme_void() +
-  theme(legend.position = "none")
+  theme_classic()
+
+# Create an empty plot with a white background for the top right corner
+empty_plot <- ggplot() + 
+  theme_classic()
 
 # Align the plots
 aligned_plots <- align_plots(x_density, scatter_plot, y_density, align = "hv", axis = "tblr")
 
 # Arrange the plots into a single plot
 final_plot <- plot_grid(
-  aligned_plots[[1]], NULL,
+  aligned_plots[[1]], empty_plot,
   aligned_plots[[2]], aligned_plots[[3]],
   ncol = 2, nrow = 2,
   rel_widths = c(3, 1),
   rel_heights = c(1, 3)
 )
 
+theme(axis.line = element_blank(),
+          axis.text.x = element_blank(),
+          axis.text.y = element_blank(),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          axis.ticks = element_blank())
+
+
+
+# Plot the specified principle components
+plot <- ggplot(df, aes(x = x, y = y, color = group)) +
+    geom_point(size = 1) +
+    theme_classic()
+
+# Create the density plots for x axis of PCA plot
+x_density <- ggplot(df, aes(x = x, color = group)) +
+    geom_density() +
+    theme_classic() +
+    theme(legend.position = "none") +
+    theme(axis.title.x = element_blank())
+
+# Create the density plots for y axis of PCA plot
+y_density <- ggplot(df, aes(x = y, color = group)) +
+    geom_density() +
+    coord_flip() +
+    theme_classic() +
+    theme(legend.position = "none") + 
+    theme(axis.title.y = element_blank())
+
+
+
+# Create an empty plot with a white background for the top right corner
+empty_plot <- ggplot() + 
+    theme_classic()
+
+# Align the plots
+aligned_plots <- align_plots(x_density, plot, y_density, align = "hv", axis = "tblr")
+
+# Arrange the plots into a single plot
+final_plot <- plot_grid(
+    aligned_plots[[1]], empty_plot,
+    aligned_plots[[2]], aligned_plots[[3]],
+    ncol = 2, nrow = 2,
+    rel_widths = c(3, 1),
+    rel_heights = c(1, 3)
+    )
+
+
+ggsave(paste0("plots","/","test.png"),final_plot)
