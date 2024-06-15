@@ -6,7 +6,9 @@ library(RImageJROI)
 library(progress)
 library(terra)
 library(reticulate)
-library(ggExtra)
+library(scales)
+
+
 spatial_object <- qread("./processed_data/spatial1/spatial1_seurat_raw.qs")
 
 
@@ -196,7 +198,7 @@ test %>% ggplot() + geom_sf(aes(fill = cor_area > 0))
 
 
 
-
+cells %>% st_centroid()
 
 
 rois <- st_combine(rois)
@@ -661,7 +663,7 @@ head(spatial_object)
 
 
 # Visualize QC metrics as a violin plot
-VlnPlot(spatial_object, features = c("nFeature_raw", "nCount_raw", "area"), ncol = 3)
+VlnPlot(spatial_object, features = c("nCount_raw", "area"), ncol = 2, alpha = 0)
 
 spatial_object@meta.data[spatial_object$area > 15000,]
 
@@ -1198,3 +1200,573 @@ final_plot <- plot_grid(
 
 
 ggsave(paste0("plots","/","test.png"),final_plot)
+
+
+
+spatial_object1 <- qread("processed_data/spatial_object_preprocessed.qs")
+
+spatial_object <- qread("processed_data/spatial1/A1_spatial_object_projection_call.qs")
+
+spatial_object@meta.data %>% ggplot() + geom_density(aes(x = nCount_raw),fill = "lightblue") + xlim(0,300)
+
+spatial_object1$projection <- case_when(
+  spatial_object1$sun1 == TRUE ~ TRUE,
+  spatial_object1$virus1 < 0.05/length(spatial_object1$virus1) ~ TRUE,
+  spatial_object1$virus2 < 0.05/length(spatial_object1$virus2) ~ TRUE,
+  TRUE ~ FALSE
+)
+
+sum(spatial_object1$projection)
+length(spatial_object1$projection)
+
+projection_plot <- DimPlot(spatial_object1, group.by = 'projection', reduction = 'umap_features',raster = FALSE, order = TRUE)
+
+ggsave("plots/projection_umap_plot.png", projection_plot, width = 4000, height = 3000, units = "px")
+
+spatial_object1$region_lower <- spatial_object1$region %>% tolower()
+
+spatial_object1$region_lower_corrected <- case_when(
+  spatial_object1$region_lower == 'dorsal_hyothalamus' ~ 'dorsal_hypothalamus',
+  spatial_object1$region_lower == 'anterior_hyopthalamus_left' ~ 'anterior_hypothalamus_left',
+  spatial_object1$region_lower == 'interpeduncular' ~ 'interpreduncular',
+  spatial_object1$region_lower == 'lateral_hypothalamus_right-1' ~ 'lateral_hypothalamus_right',
+  spatial_object1$region_lower == 'pontine_grey' ~ 'pontine_gray',
+  spatial_object1$region_lower == 'retrochiasmaric_left' ~ 'retrochiasmatic_left',
+  spatial_object1$region_lower == 'suprachiamsatic' ~ 'suprachiasmatic',
+  TRUE ~ spatial_object1$region_lower
+)
+
+spatial_object1$region_reduced <- spatial_object1$region_lower_corrected %>% gsub("_right|_left", "", .)
+
+region_plot <- DimPlot(spatial_object1, group.by = 'region_reduced', reduction = 'umap_features', raster = FALSE, shuffle = TRUE) + 
+  labs(title="",
+       x ="UMAP 1", 
+       y = "UMAP 2"
+  )
+
+
+ggsave("plots/region_umap_plot.png", region_plot, width = 5000, height = 3000, units = "px")
+
+
+DimPlot(spatial_object1, group.by = 'region_reduced', reduction = 'umap_features', raster = FALSE)
+
+library(spdep)
+
+"/processed_data/spatial1/spatial_object_preprocessed.qs"
+"./../processed_data/"
+
+"/processed_data/"
+"/processed_data/"
+
+
+spatial_object1$region_lower_corrected %>% unique() %>% sort()
+
+spatial_object1$region_reduced %>% unique() %>% sort()
+
+
+
+
+spatial_object <- qread("processed_data/spatial_object_preprocessed.qs")
+
+
+
+correct_region_names <- function(spatial_object){
+    region_lower <- spatial_object$region %>% tolower()
+
+    region_lower_corrected <- case_when(
+        region_lower == 'dorsal_hyothalamus' ~ 'dorsal_hypothalamus',
+        region_lower == 'anterior_hyopthalamus_left' ~ 'anterior_hypothalamus_left',
+        region_lower == 'interpeduncular' ~ 'interpreduncular',
+        region_lower == 'lateral_hypothalamus_right-1' ~ 'lateral_hypothalamus_right',
+        region_lower == 'pontine_grey' ~ 'pontine_gray',
+        region_lower == 'retrochiasmaric_left' ~ 'retrochiasmatic_left',
+        region_lower == 'suprachiamsatic' ~ 'suprachiasmatic',
+        TRUE ~ region_lower
+    )
+
+    spatial_object$region_corrected <- region_lower_corrected %>% gsub("_right|_left", "", .)
+
+    return(spatial_object)
+}
+
+spatial_object <- correct_region_names(spatial_object)
+
+
+head(spatial_object)
+
+
+spatial_object <- add_projection_termination(spatial_object)
+head(spatial_object)
+spatial_object$projection_termination %>% unique()
+
+spatial_object <- add_projection_termination(spatial_object)
+projection_umaps(spatial_object)
+
+
+
+levels <- unique(spatial_object$projection_termination)
+
+
+num_levels <- spatial_object$projection_termination_no_double %>% unique() %>% length()
+
+# Generate colors
+default_colors <- hue_pal()(num_levels)
+names(default_colors) <- spatial_object$projection_termination_no_double %>% unique()
+
+default_colors["No-virus"] <- "#7F7F7F"
+
+DimPlot(spatial_object, group.by = 'projection_termination_no_double', reduction = 'umap_features', raster = FALSE, order = TRUE) + scale_color_manual(values = default_colors)
+
+
+length(grep("\\+", spatial_object$projection_termination))
+length(spatial_object$projection_termination)
+sum(!spatial_object$projection_termination == "No-virus")
+
+spatial_object$projection_termination_no_double %>% unique()
+
+area_umap(spatial_object)
+
+FeaturePlot(spatial_object, feature = "area", reduction = "umap_features", raster = FALSE)
+
+spatial_object$projection_termination
+
+spatial_object$sun1_vs_virus <- case_when(
+        spatial_object$sun1 == TRUE & spatial_object$virus1 > 0.05 & spatial_object$virus2 > 0.05 ~ "Sun1",
+        spatial_object$sun1 == FALSE & (spatial_object$virus1 < 0.05 | spatial_object$virus2 < 0.05) ~ "Virus",
+        spatial_object$sun1 == TRUE & (spatial_object$virus1 < 0.05 | spatial_object$virus2 < 0.05) ~ "Sun1+Virus",
+        spatial_object$sun1 == FALSE & spatial_object$virus1 > 0.05 & spatial_object$virus2 > 0.05 ~ "Non-projecting"
+    )
+
+spatial_object@meta.data %>% 
+  group_by(run_index, section_index, sun1_vs_virus) %>% 
+  summarize(count = n()) %>% mutate(total_count = sum(count),relative_count = count / total_count) %>%
+  ggplot() + geom_col(aes(x = sun1_vs_virus, y = relative_count)) + facet_grid(section_index~run_index) + 
+  geom_text(aes(x = sun1_vs_virus, y = relative_count + 0.1, label = count))
+
+
+spatial_object@meta.data %>% 
+  group_by(run_index, section_index, sun1_vs_virus) %>% 
+  summarize(count = n()) %>% mutate(total_count = sum(count),relative_count = count / total_count) -> test
+
+
+write.table(as.data.frame(test), file = "./processed_data/sun1_vs_virus.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
+threshold <- 0.05/ncol(spatial_object)
+
+spatial_object$sun1_vs_virus_bonferroni <- case_when(
+    spatial_object$sun1 == TRUE & spatial_object$virus1 > threshold & spatial_object$virus2 > threshold ~ "Sun1",
+    spatial_object$sun1 == FALSE & (spatial_object$virus1 < threshold | spatial_object$virus2 < threshold) ~ "Virus",
+    spatial_object$sun1 == TRUE & (spatial_object$virus1 < threshold | spatial_object$virus2 < threshold) ~ "Sun1+Virus",
+    spatial_object$sun1 == FALSE & spatial_object$virus1 > threshold & spatial_object$virus2 > threshold ~ "Non-projecting"
+)
+
+sun1_vs_virus_bonferroni_bar_plot <- spatial_object@meta.data %>% 
+        group_by(run_index, section_index, sun1_vs_virus_bonferroni) %>% 
+        summarize(count = n()) %>% 
+        mutate(total_count = sum(count),relative_count = count / total_count) %>%
+        ggplot() + geom_col(aes(x = sun1_vs_virus_bonferroni, y = relative_count)) + facet_grid(section_index~run_index) + 
+        geom_text(aes(x = sun1_vs_virus_bonferroni, y = relative_count + 0.1, label = count))
+head(spatial_object)
+
+
+unique(spatial_object$sun1_vs_virus == spatial_object$sun1_vs_virus_bonferroni)
+
+
+sun1_vs_virus_bonferroni_bar_plot <- spatial_object@meta.data %>% 
+        group_by(run_index, section_index, sun1_vs_virus_bonferroni) %>% 
+        summarize(count = n()) %>% mutate(p_value = ) 
+
+
+spatial_object@meta.data %>% 
+        group_by(run_index, section_index) %>% select
+
+
+spatial_object$sun1
+spatial_object$virus1 < 0.05 | spatial_object$virus2 < 0.05
+
+
+
+spatial_object@meta.data 
+
+fisher.test(table(
+  spatial_object$sun1,
+  spatial_object$virus1 < 0.05 | spatial_object$virus2 < 0.05
+))
+
+sun1_vs_virus_bonferroni_bar_plot <- spatial_object@meta.data %>% 
+        group_by(run_index, section_index, sun1_vs_virus_bonferroni) %>% 
+        summarize(count = n()) -> test2
+test <- rep("a",3*8)
+
+p_values <- data.frame(
+  run_index = test2$run_index,
+  section_index = test2$section_index,
+  label = test
+)
+
+sun1_vs_virus_bonferroni_bar_plot <- spatial_object@meta.data %>% 
+        group_by(run_index, section_index, sun1_vs_virus_bonferroni) %>% 
+        summarize(count = n()) %>% mutate(total_count = sum(count),relative_count = count / total_count) %>%
+        ggplot() + geom_col(aes(x = sun1_vs_virus_bonferroni, y = relative_count)) + facet_grid(section_index~run_index) + 
+        geom_text(aes(x = sun1_vs_virus_bonferroni, y = relative_count + 0.1, label = count)) + 
+        geom_text(data = p_values, aes(x = 2.5, y = Inf, label = format(p_value, scientific = TRUE, digits = 2)), hjust = 0.5, vjust = 1.2, inherit.aes = FALSE, size = 5)
+
+
+p_values <- sun1_vs_virus_counts %>% select(-c(total_count,relative_count)) %>% pivot_wider(names_from = sun1_vs_virus, values_from = count) %>%
+  mutate(p_value = fisher.test(matrix(c(`Non-projecting`,Sun1,`Sun1+Virus`,Virus),nrow = 2))$p.value)
+
+
+test$p_value
+
+fisher.test(matrix(c(7634,55,194,449),nrow = 2))$p.value
+
+
+projection_terminations <- spatial_object@meta.data %>% 
+  group_by(run_index, section_index, projection_termination) %>%
+  summarize(count = n()) %>% 
+  filter(!projection_termination == "No-virus")
+
+projection_terminations$projection_termination <- factor(projection_terminations$projection_termination, levels = c("BST","PAG", "BST+PAG", "LHA", "PBN", "LHA+PBN", "PVT", "CEA", "PVT+CEA"))
+
+projection_terminations %>%
+  ggplot() + geom_col(aes(x = projection_termination, y = count)) + 
+  facet_grid(section_index~run_index, scales = "free_x")
+
+spatial_object@meta.data %>% 
+  group_by(run_index, section_index, projection_termination) %>%
+  summarize(count = n()) -> test
+
+print(test, n = 100)
+
+head(spatial_object)
+
+
+spatial_object$virus1_count <- 2386033
+spatial_object$virus2_count <- 2386033
+
+rownames(spatial_object@assays$raw[paste0("counts.",section_index_number,".",run_index_number)])
+colnames(spatial_object@assays$raw[paste0("counts.",section_index_number,".",run_index_number)])
+test <- spatial_object@assays$raw[paste0("counts.",section_index_number,".",run_index_number)]
+
+test[gsub("_", "-", "p147_mCherry_2A_iCre"),cells]
+
+cells
+
+
+spatial_object <- qread("processed_data/spatial_object_preprocessed.qs")
+
+
+spatial_object <- correct_region_names(spatial_object)
+spatial_object <- add_projection_termination(spatial_object)
+
+
+table(spatial_object$region_corrected,spatial_object$projection_termination)
+
+
+regions <- spatial_object$region_corrected
+cell_properties <- spatial_object$projection_termination
+
+
+region_unique <- unique(na.omit(regions))
+cell_property_unique <- unique(na.omit(cell_properties))
+
+enrichment_matrix <- matrix(0, nrow = length(region_unique), ncol = length(cell_property_unique))
+rownames(enrichment_matrix) <- sort(region_unique)
+colnames(enrichment_matrix) <- sort(cell_property_unique)
+
+for (region in region_unique){
+  for (cell_property in cell_property_unique){
+    regions_test <- case_when(regions == region ~ region, TRUE ~ 'Others')
+    cell_properties_test <- case_when(cell_properties == cell_property ~ cell_property, TRUE ~ 'Others')
+     
+      table(regions_test,cell_properties_test) %>% 
+      as.data.frame() %>% 
+      arrange(desc(regions_test != "Others"),desc(cell_properties_test != "Others")) %>% 
+      pivot_wider(names_from = cell_properties_test, values_from = Freq) %>% 
+      select(-regions_test) %>% 
+      fisher.test(alternative="greater") %>% 
+      .[["p.value"]] -> enrichment_matrix[region,cell_property]
+    
+  }
+}
+
+enrichment_matix <- fisher_region_cell_property_enrichment(spatial_object$region_corrected,spatial_object$projection_termination)
+
+
+test <- table(regions, cell_properties)
+
+class(test)
+
+enrichment_matrix == 0
+
+
+    #Dot plot of enrichment fisher test
+    region_cell_property_enrichment_plot <- enrichment_matrix_inv_long %>%
+        ggplot() + 
+        geom_point(aes(x = projection_termination, y = regions, size = inv_p_value, color = factor(inv_p_value  > -log(0.05/nrow(enrichment_matrix_inv_long))))) +
+        scale_size(range = c(1,6), name="-log(P)") + 
+        scale_color_manual(values = c("TRUE" = "black", "FALSE" = "transparent")) + 
+        theme_bw() + 
+        theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+sun1_virus_across_sections <- function(spatial_object){
+    
+    spatial_object$sun1_vs_virus <- case_when(
+        spatial_object$sun1 == TRUE & spatial_object$virus1 > 0.05 & spatial_object$virus2 > 0.05 ~ "Sun1",
+        spatial_object$sun1 == FALSE & (spatial_object$virus1 < 0.05 | spatial_object$virus2 < 0.05) ~ "Virus",
+        spatial_object$sun1 == TRUE & (spatial_object$virus1 < 0.05 | spatial_object$virus2 < 0.05) ~ "Sun1+Virus",
+        spatial_object$sun1 == FALSE & spatial_object$virus1 > 0.05 & spatial_object$virus2 > 0.05 ~ "Non-projecting"
+    )
+
+
+    sun1_vs_virus_counts <- spatial_object@meta.data %>% 
+        group_by(run_index, section_index, sun1_vs_virus) %>% 
+        summarize(count = n()) %>% mutate(total_count = sum(count),relative_count = count / total_count)
+    
+    p_values <- sun1_vs_virus_counts %>% 
+        select(-c(total_count,relative_count)) %>% 
+        pivot_wider(names_from = sun1_vs_virus, values_from = count) %>%
+            mutate(p_value = fisher.test(matrix(c(`Non-projecting`,Sun1,`Sun1+Virus`,Virus),nrow = 2))$p.value)
+
+
+    sun1_vs_virus_bar_plot <- sun1_vs_virus_counts %>%
+        ggplot() + geom_col(aes(x = sun1_vs_virus, y = relative_count)) + facet_grid(section_index~run_index) + 
+        geom_text(aes(x = sun1_vs_virus, y = relative_count + 0.1, label = count)) + 
+        geom_text(data = p_values, aes(x = 2.5, y = Inf, label = format(p_value, scientific = TRUE, digits = 2)), hjust = 0.5, vjust = 1.2, inherit.aes = FALSE, size = 5)
+
+
+    ggsave("plots/spatial_analysis/sun1_vs_virus_bar_plot.png", sun1_vs_virus_bar_plot)
+
+    threshold <- 0.05/ncol(spatial_object)
+
+    spatial_object$sun1_vs_virus_bonferroni <- case_when(
+        spatial_object$sun1 == TRUE & spatial_object$virus1 > threshold & spatial_object$virus2 > threshold ~ "Sun1",
+        spatial_object$sun1 == FALSE & (spatial_object$virus1 < threshold | spatial_object$virus2 < threshold) ~ "Virus",
+        spatial_object$sun1 == TRUE & (spatial_object$virus1 < threshold | spatial_object$virus2 < threshold) ~ "Sun1+Virus",
+        spatial_object$sun1 == FALSE & spatial_object$virus1 > threshold & spatial_object$virus2 > threshold ~ "Non-projecting"
+    )
+
+    sun1_vs_virus_counts_bonferroni <- spatial_object@meta.data %>% 
+        group_by(run_index, section_index, sun1_vs_virus_bonferroni) %>% 
+        summarize(count = n()) %>% mutate(total_count = sum(count),relative_count = count / total_count)
+    
+    p_values_bonferroni <- sun1_vs_virus_counts_bonferroni %>% 
+        select(-c(total_count,relative_count)) %>% 
+        pivot_wider(names_from = sun1_vs_virus_bonferroni, values_from = count) %>%
+            mutate(p_value = fisher.test(matrix(c(`Non-projecting`,Sun1,`Sun1+Virus`,Virus),nrow = 2))$p.value)
+
+
+    sun1_vs_virus_bonferroni_bar_plot <- sun1_vs_virus_counts_bonferroni %>%
+        ggplot() + geom_col(aes(x = sun1_vs_virus_bonferroni, y = relative_count)) + facet_grid(section_index~run_index) + 
+        geom_text(aes(x = sun1_vs_virus_bonferroni, y = relative_count + 0.1, label = count)) + 
+        geom_text(data = p_values_bonferroni, aes(x = 2.5, y = Inf, label = format(p_value, scientific = TRUE, digits = 2)), hjust = 0.5, vjust = 1.2, inherit.aes = FALSE, size = 5)
+
+
+    ggsave("plots/spatial_analysis/sun1_vs_virus_bonferroni_bar_plot.png", sun1_vs_virus_bonferroni_bar_plot)
+
+}
+
+projection_termination_plots <- function(spatial_object, projection_termination_column_name){
+
+    projection_terminations <- spatial_object@meta.data %>% 
+        group_by(run_index, section_index, !!sym(projection_termination_column_name)) %>%
+        summarize(count = n()) %>% 
+        filter(!!sym(projection_termination_column_name) != "No-virus")
+
+    projection_terminations <- projection_terminations %>% 
+        mutate(!!sym(projection_termination_column_name) := factor(
+                !!sym(projection_termination_column_name), 
+                levels = c("BST","PAG", "BST+PAG", "LHA", "PBN", "LHA+PBN", "PVT", "CEA", "PVT+CEA")
+            ))
+
+    projection_terminations_plot <- projection_terminations %>%
+        ggplot() + geom_col(aes(x = !!sym(projection_termination_column_name), y = count)) + facet_grid(section_index~run_index, scales = "free_x") + 
+        geom_text(aes(x = !!sym(projection_termination_column_name), y = count + 100, label = count))
+
+    ggsave("plots/spatial_analysis/projection_terminations_plot.png", projection_terminations_plot)
+
+    projection_terminations_bonferroni <- spatial_object@meta.data %>% 
+        group_by(run_index, section_index, projection_termination_bonferroni) %>%
+        summarize(count = n()) %>% 
+        filter(!projection_termination_bonferroni == "No-virus")
+
+    projection_terminations_bonferroni$projection_termination_bonferroni <- factor(
+            projection_terminations_bonferroni$projection_termination_bonferroni, 
+            levels = c("BST","PAG", "BST+PAG", "LHA", "PBN", "LHA+PBN", "PVT", "CEA", "PVT+CEA")
+        )
+
+    projection_terminations_bonferroni_plot <- projection_terminations_bonferroni %>%
+        ggplot() + geom_col(aes(x = projection_termination_bonferroni, y = count)) + facet_grid(section_index~run_index, scales = "free_x") + 
+        geom_text(aes(x = projection_termination_bonferroni, y = count + 100, label = count))
+
+    ggsave("plots/spatial_analysis/projection_terminations_bonferroni_plot.png", projection_terminations_bonferroni_plot)
+}
+
+
+projection_termination_column_name <- "projection_termination"
+projection_terminations$projection_termination
+
+
+spatial_object$virus1_count <- 2386033
+spatial_object$virus2_count <- 2386033
+
+
+
+
+
+polyT <- raster::raster("./raw_data/spatial1/Panorama_Spatial1_serie2_W0A1_Cy5-class_R11_.tiff")
+
+mask <- polyT != 0
+
+polygontest <- rasterToPolygons(mask, dissolve = TRUE)
+
+plot(rois)
+roi <- st_as_sf(polygontest)
+
+test1 <- st_sf(names(cells[1:20]), cells[1:20])
+test <- st_difference(test1,rois)
+test %>% st_geometry() %>% rownames() 
+
+test2 <- 1:2
+names(test2) <- c("a","b")
+test2["a"]
+test %>% st_area
+
+rownames(test)
+
+plot(test)
+plot(cells)
+test[1:5]
+
+colnames(test)
+
+img <- raster::raster("./raw_data/spatial1/Panorama_Spatial1_serie2_W0A1_Cy5-class_R11_.tiff")
+test <- terra::extract(img, vect(rois), fun=mean, na.rm=FALSE)
+
+
+intensities %>% .[["intensity_background_virus1"]]
+
+rate <- intensities %>% filter(run_index == "spatial1", section_index == "A1") %>% .[["intensity_background_virus1"]]*1000
+
+data <- rpois(10000,rate)
+
+data_scaled <- data[data < quantile(data, 0.95)]
+
+mean(data_scaled)
+
+rpois(10,1.1)
+
+
+
+rate <- intensities %>% filter(run_index == "spatial1", section_index == "A1") %>% .[["intensity_background_virus1"]]*1000
+
+data <- rpois(1000000,rate)
+
+print(rate/1000)
+print(mean(data)/1000)
+
+
+virus_index <- "virus1"
+
+rates <- intensities %>% .[[paste0("intensity_background_",virus_index)]]*100000000
+intensities_scaled <- rep(0,length(rates))
+
+
+for (i in 1:length(rates)){
+  intensities_scaled[i] <- rpois(1000000,rates[i]) %>% .[. < quantile(., 0.95)] %>% mean(.)/1000  
+}
+
+intensities[[paste0("intensity_background_",virus_index)]]/intensities_scaled*intensities[[paste0("intensity_negative_cells_",virus_index)]]
+
+print(intensities$intensity_background_virus1/intensities_scaled)
+
+print(intensities_scaled)
+
+intensity_scales <- rpois(10,rate) %>% mean(.)/1000
+
+
+scale_intensity <- function(intensities, virus_index){
+    rates <- intensities %>% .[[paste0("intensity_background_",virus_index)]]*1000
+    intensities_scaled <- rep(0,length(rates))
+
+
+    for (i in 1:length(rates)){
+    intensities_scaled[i] <- rpois(1000000,rates[i]) %>% .[. < quantile(., 0.95)] %>% mean(.)/100000
+    }
+
+    intensities[[paste0("intensity_background_",virus_index)]]/intensities_scaled*intensities[[paste0("intensity_negative_cells_",virus_index)]]
+
+}
+
+spatial_object$virus <- case_when(
+  spatial_object$virus1 < 0.05 & spatial_object$virus2 > 0.05 ~ "virus1",
+  spatial_object$virus1 > 0.05 & spatial_object$virus2 < 0.05 ~ "virus2",
+  spatial_object$virus1 > 0.05 & spatial_object$virus2 > 0.05 ~ "No-virus",
+  spatial_object$virus1 < 0.05 & spatial_object$virus2 < 0.05 ~ "virus1+virus2",
+)
+
+
+
+levels <- unique(spatial_object$virus)
+
+
+num_levels <- spatial_object$projection_termination_no_double %>% unique() %>% length()
+
+
+levels <- unique(spatial_object$virus)
+default_colors <- hue_pal()(length(levels))
+names(default_colors) <- levels
+
+default_colors["No-virus"] <- "#7F7F7F"
+
+
+
+
+
+DefaultBoundary(spatial_object[["A1"]]) <- "segmentation"
+spatial_plot <- ImageDimPlot(spatial_object, 
+             fov = "A1",
+             axes = F, 
+             dark.background = T, 
+             size = 1.5,
+             border.color = "black", 
+             border.size = 0.1, 
+             cols = default_colors, 
+             group.by = "virus",
+             molecules = c("p147_mCherry_2A_iCre","p36_NLS_Cre"),
+             nmols = 2000000,
+             mols.size = 0.05,
+             mols.alpha = 0.1
+)
+
+ggsave("./plots/spatialcheck.png",plot = spatial_plot, width = 6000, height = 7500, units = "px")
+
+
+
+section_indices <- c("A1", "B1", "C1", "D1", "A2", "B2", "C2", "D2")
+
+run_indices <- c("spatial1", "spatial2", "spatial3")
+for (run_index_number in 1:3){
+    for (section_index in section_indices){
+      run_index_number_adjusted <- ifelse(run_index_number == 1, "", paste0(".",run_index_number))
+      fov <- paste0(section_index,run_index_number_adjusted)
+
+      DefaultBoundary(spatial_object[[fov]]) <- "segmentation"
+      spatial_plot <- ImageDimPlot(spatial_object, 
+                  fov = fov,
+                  axes = F, 
+                  dark.background = T, 
+                  size = 1.5,
+                  border.color = "black", 
+                  border.size = 0.1, 
+                  cols = default_colors, 
+                  group.by = "virus",
+                  molecules = c("p147_mCherry_2A_iCre","p36_NLS_Cre"),
+                  nmols = 2000000,
+                  mols.size = 0.05,
+                  mols.alpha = 0.1
+      )
+
+      ggsave("./plots/spatialcheck.png",plot = spatial_plot, width = 6000, height = 7500, units = "px")
+    }
+}

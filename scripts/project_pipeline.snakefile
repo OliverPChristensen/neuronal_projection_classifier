@@ -14,11 +14,20 @@ ic = dict(zip(section_indices, indices_converter))
 
 rule all:
     input:
+        "plots/region_umap.png"
         "processed_data/spatial_object_preprocessed.qs",
         #expand("processed_data/{run_index}/{section_index}_spatial_object_projection_call.qs", run_index = run_indices, section_index = section_indices),
         expand("processed_data/{run_index}/{section_index}_cell_seg_imagej_rois.zip", run_index = run_indices, section_index = section_indices),
         expand("processed_data/{run_index}/{section_index}_sun1_imagej_rois.zip", run_index = run_indices, section_index = section_indices),
         expand("processed_data/{run_index}/{section_index}_sun1_area_correction_rois.npz", run_index = run_indices, section_index = section_indices)
+
+rule spatial_analysis:
+    input:
+        "processed_data/spatial_object_preprocessed.qs"
+    output:
+        "plots/region_umap.png"
+    shell:
+        "sbatch --wait scripts/"
 
 rule merge_qc_norm_integrate_spatial_object:
     input:

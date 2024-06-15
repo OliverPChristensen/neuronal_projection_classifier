@@ -8,6 +8,7 @@ raw_data/
 wandb/
 .vscode/
 .snakemake/
+data/
 
 # Env folders
 

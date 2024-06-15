@@ -217,11 +217,15 @@ main <- function(){
     # Add virus calls for virus 1 to meta data
     spatial_object <- AddMetaData(spatial_object,virus1_call,"virus1")
     
+    spatial_object$virus1_count <- sum(transcripts$V4 == "p147_mCherry_2A_iCre")
+
     # Generate virus calls for virus 2
     virus2_call <- virus_call(spatial_object, transcripts, "p36_NLS_Cre")
 
     # Add virus calls for virus 2 to meta data
     spatial_object <- AddMetaData(spatial_object,virus2_call,"virus2")
+
+    spatial_object$virus2_count <- sum(transcripts$V4 == "p36_NLS_Cre")
 
     cat(paste0(current_time()," Saving spatial seurat object with projection calls to ", path_to_output_folder,"/",section_index,"_spatial_object_projection_call.qs","\n"))
     dir.create(paste0(path_to_output_folder),showWarnings = FALSE)
@@ -229,3 +233,4 @@ main <- function(){
 }
 
 main()
+

@@ -11,7 +11,7 @@
 cd /projects/cbmr_shared/people/wqc597/neuronal_projection_classifier
 source activate_project_neuronal_projection_classifier
 
-python scripts/cell_segmentation_pipeline.py -o presentations/shared_lab_meeting_24052024/segmentations -sp raw_data/spatial1/Spatial1_serie2_serie2_A1-1_DAPI.tiff -sp2 raw_data/spatial1/Panorama_Spatial1_serie2_W0A1_Cy5-class_R11_.tiff -ri spatial1 -si A1 -nt combined
+python scripts/cell_segmentation_pipeline.py -o presentations/shared_lab_meeting_24052024/segmentations -sp raw_data/spatial1/Spatial1_serie2_serie2_A1-1_DAPI.tiff -sp2 raw_data/spatial1/Panorama_Spatial1_serie2_W0A1_Cy5-class_R11_.tiff -ri spatial1 -si A1 -nt combined_grid_fill
 
 pid=$!
 wait $pid
