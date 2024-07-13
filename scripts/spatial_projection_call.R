@@ -5,64 +5,15 @@ library(tidyverse)
 library(Seurat)
 library(qs)
 
-current_time <- function(){
-    # Input: NA
-    #
-    # Extract and format current time
-    #
-    # Output: Current time
+utils <- new.env()
+source("scripts/utils/utils.R", local = utils)
 
-    # Extract and format current time
-    return(paste0("[",format(Sys.time(), format = "%Y-%m-%d %H:%M:%S"),"]"))
-}
+plot_utils <- new.env()
+source("scripts/utils/plot_utils.R", local = plot_utils)
 
-load_transcripts <- function(transcripts_path){
-    # Input: Path to transcript file
-    #
-    # Loades the transcript file, removes false positive (FP) transripts and creates a sf object from the trasncript dataframe
-    #
-    # Output: transcripts as a sf object with POINT geometries
+sf_utils <- new.env()
+source("scripts/utils/sf_utils.R", local = sf_utils)
 
-    # Read transcripts file and remove false positive transcripts
-    transcripts <- read.table(transcripts_path, header = F, sep = "\t") %>% filter(!str_detect(V4, "FP "))
-
-    # Creates sf object from transcript data frame with POINT geometries
-    transcript_points <- transcripts %>% st_as_sf(.,coords= c("V1","V2"))
-    
-    return(transcript_points)
-}
-
-array_to_sf_rois <- function(rois_path){
-    # Input: Path to rois file saved in numpys npz format
-    #
-    # Loads rois as numpy arrays and converts them to sfc objects containing rois as POLYGON geometries
-    #
-    # Output: sfc object containing rois as POLYGON geometries
-
-    # Import numpy module
-    np <- import("numpy")
-
-    # Load rois as arrays
-    arrays <- np$load(rois_path)
-
-    # Convert rois to a list of POLYGON objects
-    rois <- list()
-    for (roi in arrays$files){
-        roi_coords <- arrays$get(roi)
-
-        # Closing the roi coords
-        roi_coords_closed <- rbind(roi_coords,roi_coords[1,])
-        rois[[roi]] <- st_polygon(list(roi_coords_closed))
-    }
-
-    # Converting list of POLYGONs to sfc object
-    rois_sfc <- rois %>% st_sfc()
-
-    # Removing non-valid ROIs
-    rois_valid <- rois_sfc[st_is_valid(rois_sfc)]
-
-    return(rois_valid)
-}
 
 sun1_call <- function(sun1_rois, rois_cells){
     # Input: Sun1 ROIs as sfc object with POLYGON geometries, cell ROIs as sfc object with POLYGON geometries
@@ -180,7 +131,7 @@ main <- function(){
     run_index <- args$run_index
     section_index <- args$section_index
 
-    cat(paste0(current_time()," Loading spatial object from ",spatial_object_path,"\n"))
+    cat(paste0(utils$current_time()," Loading spatial object from ",spatial_object_path,"\n"))
     # Load spatial seurat object to use for projection calls
     spatial_object <- qread(spatial_object_path)
 
@@ -189,34 +140,35 @@ main <- function(){
     spatial_object$virus1 <- NA
     spatial_object$virus2 <- NA
 
-    cat(paste0(current_time()," Generating projection calls for section ",section_index,"\n"))
+    cat(paste0(utils$current_time()," Generating projection calls for section ",section_index,"\n"))
 
     # Load transcripts
-    cat(paste0(current_time()," Loading transcripts from ",transcript_path,"\n"))
-    transcripts <- load_transcripts(transcript_path)
+    cat(paste0(utils$current_time()," Loading transcripts from ",transcript_path,"\n"))
+    transcripts <- sf_utils$load_transcripts(transcript_path)
 
     # Load cell ROIs
-    cat(paste0(current_time()," Loading cell ROIs from ",cell_roi_path,"\n"))
-    rois_cells <- array_to_sf_rois(cell_roi_path)
+    cat(paste0(utils$current_time()," Loading cell ROIs from ",cell_roi_path,"\n"))
+    rois_cells <- sf_utils$array_to_sf_rois(cell_roi_path)
 
     # Load sun1 ROIs
-    cat(paste0(current_time()," Loading sun1 ROIs from ", sun1_roi_path,"\n"))
-    rois_sun1 <- array_to_sf_rois(sun1_roi_path)
+    cat(paste0(utils$current_time()," Loading sun1 ROIs from ", sun1_roi_path,"\n"))
+    rois_sun1 <- sf_utils$array_to_sf_rois(sun1_roi_path)
 
     # Generate sun1 calls
-    cat(paste0(current_time()," Generating sun1 call for section ", section_index,"\n"))
+    cat(paste0(utils$current_time()," Generating sun1 call for section ", section_index,"\n"))
     sun1_bol <- sun1_call(rois_sun1, rois_cells)
 
     # Add sun1 call to meta data
     spatial_object <- AddMetaData(spatial_object,sun1_bol,"sun1")
 
     # Generate virus calls for virus 1
-    cat(paste0(current_time()," Generating virus calls for section ", section_index,"\n"))
+    cat(paste0(utils$current_time()," Generating virus calls for section ", section_index,"\n"))
     virus1_call <- virus_call(spatial_object, transcripts, "p147_mCherry_2A_iCre")
 
     # Add virus calls for virus 1 to meta data
     spatial_object <- AddMetaData(spatial_object,virus1_call,"virus1")
     
+    # Add total virus count of virus 1
     spatial_object$virus1_count <- sum(transcripts$V4 == "p147_mCherry_2A_iCre")
 
     # Generate virus calls for virus 2
@@ -225,9 +177,10 @@ main <- function(){
     # Add virus calls for virus 2 to meta data
     spatial_object <- AddMetaData(spatial_object,virus2_call,"virus2")
 
+    # Add total virus count of virus 2
     spatial_object$virus2_count <- sum(transcripts$V4 == "p36_NLS_Cre")
 
-    cat(paste0(current_time()," Saving spatial seurat object with projection calls to ", path_to_output_folder,"/",section_index,"_spatial_object_projection_call.qs","\n"))
+    cat(paste0(utils$current_time()," Saving spatial seurat object with projection calls to ", path_to_output_folder,"/",section_index,"_spatial_object_projection_call.qs","\n"))
     dir.create(paste0(path_to_output_folder),showWarnings = FALSE)
     qsave(spatial_object,paste0(path_to_output_folder,"/",section_index,"_spatial_object_projection_call.qs"))
 }

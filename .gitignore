@@ -9,6 +9,8 @@ wandb/
 .vscode/
 .snakemake/
 data/
+__pycache__/
+rsconnect/
 
 # Env folders
 
