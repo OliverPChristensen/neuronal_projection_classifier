@@ -197,8 +197,6 @@ load_regions <- function(region_paths, run_section_index_pairs){
 
         regions <- sf_utils$regions_to_sf_rois(region_path)
 
-        regions$region <- correct_region_names(regions$region_name)
-
         regions$run_index <- run_index
         regions$section_index <- section_index
 

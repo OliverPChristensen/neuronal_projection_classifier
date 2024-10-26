@@ -11,7 +11,7 @@
 cd /projects/cbmr_shared/people/wqc597/neuronal_projection_classifier
 source activate_project_neuronal_projection_classifier
 
-Rscript scripts/spatial_custering_analysis.R -o $1 -p $2 -sop $3 -rps $4
+Rscript scripts/spatial_custering_analysis.R -o $1 -p $2 -sop $3 -rps $4 -rdp $5
 
 pid=$!
 wait $pid

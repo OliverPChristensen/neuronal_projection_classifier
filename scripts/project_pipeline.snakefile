@@ -17,8 +17,9 @@ ic = dict(zip(section_indices, indices_converter))
 rule all:
     input:
         "spatial_hypothalamus_app/data/shiny_data.qs",
-        "plots/spatial_cluster_analysis/chi2_p_values_plot.png",
+        "plots/spatial_clustering_analysis/chi2_p_values_plot.png",
         "plots/region_projection_analysis/region_projection_plot_bayesian.png",
+        "plots/cell_type_projection_analysis/cell_type_projection_plot_bayesian.png",
         "plots/validate_projection_call/check_background_intensity_plot.png"
 
 rule create_shiny_data:
@@ -34,16 +35,25 @@ rule create_shiny_data:
         sbatch --wait scripts/sbatch_create_shiny_data.sh spatial_hypothalamus_app/data {input.spatial_object} "{input.transcripts}" "{input.regions}" {input.bregma_tsv}
         """
 
-rule spatial_cluster_analysis:
+rule spatial_clustering_analysis:
     input:
         spatial_object = "processed_data/spatial_object_preprocessed.qs",
-        regions = expand("raw_data/{run_index}/{run_index}_{section_index}_regions", run_index = run_indices, section_index = section_indices)
+        regions = expand("raw_data/{run_index}/{run_index}_{section_index}_regions", run_index = run_indices, section_index = section_indices),
+        rotation_df = "processed_data/ROI_Bregma_spatial.tsv"
     output:
-        "plots/spatial_cluster_analysis/chi2_p_values_plot.png"
+        "plots/spatial_clustering_analysis/chi2_p_values_plot.png"
     shell:
         """
-        sbatch --wait scripts/sbatch_spatial_clustering_analysis.sh processed_data plots/spatial_cluster_analysis {input.spatial_object} "{input.regions}"
+        sbatch --wait scripts/sbatch_spatial_clustering_analysis.sh processed_data plots/spatial_clustering_analysis {input.spatial_object} "{input.regions}" {input.rotation_df}
         """
+
+rule cell_type_projection_analysis:
+    input:
+        spatial_object = "processed_data/spatial_object_preprocessed.qs"
+    output:
+        "plots/cell_type_projection_analysis/cell_type_projection_plot_bayesian.png"
+    shell:
+        "sbatch --wait scripts/sbatch_cell_type_projection_analysis.sh processed_data plots/cell_type_projection_analysis {input.spatial_object}"
 
 rule region_projection_analysis:
     input:

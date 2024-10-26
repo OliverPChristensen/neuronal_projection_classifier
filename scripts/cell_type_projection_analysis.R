@@ -51,6 +51,7 @@ calculate_fisher_region_cell_property_enrichment <- function(regions,cell_proper
     return(enrichment_matrix)
 }
 
+
 plot_region_cell_property_enrichment <- function(enrichment_matrix, plot_folder, plot_name){
     
     max_value <- -log(min(enrichment_matrix[enrichment_matrix != 0]))*2
@@ -97,8 +98,8 @@ enrichment_test_projection_adapter <- function(meta_data, plot_folder){
     for (run_index_ in run_indices){
         meta_data_filtered <- meta_data %>% filter(run_index == run_index_, !in_injection_site)
 
-        enrichment_matrix <- calculate_fisher_region_cell_property_enrichment(meta_data_filtered$region_reduced,meta_data_filtered$single_projection)
-        plot_region_cell_property_enrichment(enrichment_matrix, plot_folder, paste0("enrichment_cell_by_region_corrected_",run_index_,".png"))
+        enrichment_matrix <- calculate_fisher_region_cell_property_enrichment(meta_data_filtered$cell_type,meta_data_filtered$single_projection)
+        plot_region_cell_property_enrichment(enrichment_matrix, plot_folder, paste0("enrichment_single_projection_by_cell_type_corrected_",run_index_,".png"))
     }
 
 }
@@ -112,12 +113,12 @@ plot_region_projection_absolute <- function(meta_data, plot_folder){
     meta_data <- meta_data %>% filter(!in_injection_site)
 
     region_projection_absolute_plot <- meta_data %>% 
-        filter(single_projection != "Other" & region_reduced != "Other") %>%
-        ggplot() + geom_bar(aes(x = region_reduced, fill = single_projection), position = 'dodge') + facet_grid(~single_projection) + 
+        filter(single_projection != "Other" & cell_type != "Other") %>%
+        ggplot() + geom_bar(aes(x = cell_type, fill = single_projection), position = 'dodge') + facet_grid(~single_projection) + 
         scale_fill_manual(values = plotting_colors) +
         theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
-    ggsave(paste0(plot_folder,"/region_projection_plot_absolute.png"),region_projection_absolute_plot, width = 4000, height = 3000, units = "px")
+    ggsave(paste0(plot_folder,"/cell_type_projection_plot_absolute.png"),region_projection_absolute_plot, width = 4000, height = 3000, units = "px")
 }
 
 plot_region_projection_relative <- function(meta_data, plot_folder){
@@ -128,16 +129,17 @@ plot_region_projection_relative <- function(meta_data, plot_folder){
     meta_data <- meta_data %>% filter(!in_injection_site)
 
     region_projection_relative_plot <- meta_data %>% 
-        group_by(run_index,region_reduced, single_projection) %>% 
+        group_by(run_index,cell_type, single_projection) %>% 
         summarize(count = n()) %>% 
         mutate(total_count = sum(count),relative_count = count / total_count) %>% 
-        filter(single_projection != "Other" & region_reduced != "Other")  %>%
-        ggplot + geom_col(aes(x =  region_reduced, y = relative_count, fill = single_projection), position = "dodge") + facet_grid(~single_projection) + 
+        filter(single_projection != "Other" & cell_type != "Other")  %>%
+        ggplot + geom_col(aes(x =  cell_type, y = relative_count, fill = single_projection), position = "dodge") + facet_grid(~single_projection) + 
         scale_fill_manual(values = plotting_colors) +
         theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
-    ggsave(paste0(plot_folder,"/region_projection_plot_relative.png"),region_projection_relative_plot, width = 4000, height = 3000, units = "px")
+    ggsave(paste0(plot_folder,"/cell_type_projection_plot_relative.png"),region_projection_relative_plot, width = 4000, height = 3000, units = "px")
 }
+
 
 
 calculate_relative_counts <- function(meta_data){
@@ -145,18 +147,18 @@ calculate_relative_counts <- function(meta_data){
     meta_data <- meta_data %>% filter(!in_injection_site)
 
     relative_count_df <- meta_data %>% 
-        group_by(run_index,section_index, region_reduced, single_projection) %>% 
+        group_by(run_index,section_index, cell_type, single_projection) %>% 
         summarize(count = n()) %>% 
         mutate(total_count = sum(count), relative_count = count / total_count) %>% 
-        filter(single_projection != "Other", region_reduced != "Other")
+        filter(single_projection != "Other", cell_type != "Other")
 
     return(relative_count_df)
 }
 
-prepare_data_for_bayesian_model <- function(relative_count_df, region, projection_){
+prepare_data_for_bayesian_model <- function(relative_count_df, cell_type_, projection_){
 
     relative_count_df_filtered <- relative_count_df %>% 
-        filter(region_reduced == region, single_projection == projection_) 
+        filter(cell_type == cell_type_, single_projection == projection_) 
 
     M <- relative_count_df_filtered %>% nrow()
     theta <- relative_count_df_filtered$relative_count
@@ -238,6 +240,93 @@ marginalise_beta_dist <- function(fit,num_draws_per_sample){
 }
 
 
+#fit_beta_MLE <- function(data_to_fit){
+#
+#    samples <- data_to_fit$theta
+#    # Fit a beta distribution to the sample data using MLE
+#    fit <- fitdist(samples, "beta")
+#
+#}
+
+
+plot_region_projection_dist <- function(beta_dists, relative_count_df, plot_path){
+    #beta_dists_sub <- beta_dists %>% 
+    #    slice_sample(n = 1000000)
+    
+    plotting_colors <- generate_plotting_colors()
+
+    # And point out the n highest
+    quants <- beta_dists %>% 
+        group_by(cell_type, single_projection) %>% 
+        summarize(q2.5 = quantile(samples, c(0.025)))
+    
+    beta_dist_region_projection_plot <- ggplot() + 
+        geom_violin(data = beta_dists, mapping = aes(x = cell_type, y = samples, fill = single_projection)) + facet_grid(~single_projection) + 
+        geom_point(data = quants, mapping = aes(x = cell_type, y = q2.5), size = 10, col = "red", shape = "-") + 
+        geom_point(data = relative_count_df, mapping = aes(x = cell_type, y = relative_count)) + 
+        scale_fill_manual(values = plotting_colors) +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+        ylim(0,0.2)
+    
+    ggsave(plot_path, beta_dist_region_projection_plot, width = 4000, height = 3000, units = "px")
+}
+
+
+
+calculate_log_likelihood <- function(samples, points){
+  log_likelihood <- 0
+
+  for (point in points){
+      d <- density(samples)
+      log_likelihood <- log_likelihood + log((d$y[sum(d$x < point)] + d$y[sum(d$x < point) + 1])/2)
+  }
+
+  return(log_likelihood)
+}
+
+annotate_cell_types <- function(spatial_object){
+
+    cut_offs <- list(
+        "Agrp" = 1,
+        "Pomc" = 0.1,
+        "Lmx1b" = 0.5,
+        "Bcl11b" = 0
+    )
+
+    spatial_object <- AddMetaData(spatial_object, spatial_object$raw$scale.data["Agrp", ], "agrp_exp")
+    spatial_object <- AddMetaData(spatial_object, spatial_object$raw$scale.data["Pomc", ], "pomc_exp")
+    spatial_object <- AddMetaData(spatial_object, spatial_object$raw$scale.data["Lmx1b", ], "lmx1b_exp")
+    spatial_object <- AddMetaData(spatial_object, spatial_object$raw$scale.data["Bcl11b", ], "bcl11b_exp")
+
+
+    cell_type <- case_when(
+        spatial_object$agrp_exp > cut_offs["Agrp"] & spatial_object$pomc_exp < cut_offs["Pomc"] & spatial_object$lmx1b_exp < cut_offs["Lmx1b"] & spatial_object$bcl11b_exp < cut_offs["Bcl11b"] & str_detect(spatial_object$region_corrected,"arc") ~ "Agrp",
+        spatial_object$agrp_exp < cut_offs["Agrp"] & spatial_object$pomc_exp > cut_offs["Pomc"] & spatial_object$lmx1b_exp < cut_offs["Lmx1b"] & spatial_object$bcl11b_exp < cut_offs["Bcl11b"] & str_detect(spatial_object$region_corrected,"arc") ~ "Pomc",
+        spatial_object$agrp_exp < cut_offs["Agrp"] & spatial_object$pomc_exp < cut_offs["Pomc"] & spatial_object$lmx1b_exp > cut_offs["Lmx1b"] & spatial_object$bcl11b_exp < cut_offs["Bcl11b"] ~ "Lmx1b",
+        spatial_object$agrp_exp < cut_offs["Agrp"] & spatial_object$pomc_exp < cut_offs["Pomc"] & spatial_object$lmx1b_exp < cut_offs["Lmx1b"] & spatial_object$bcl11b_exp > cut_offs["Bcl11b"] ~ "Bcl11b",
+        TRUE ~ "Other"
+    )
+
+    return(cell_type)
+}
+
+estimate_sample_mean_dist_CLT <- function(samples, sample_size){
+    
+    mean_samples <- rnorm(sample_size,mean(samples),sd(samples)/sqrt(length(samples)))
+
+    return(mean_samples)
+}
+
+
+
+estimate_sample_mean_dist_bootstrap <- function(samples, sample_size){
+    
+    samples_resample <- sample(samples, replace = TRUE, size = length(samples)*sample_size)
+
+    mean_samples <- tapply(samples_resample, rep(1:(length(samples_resample)/8), each = 8), mean)
+
+    return(mean_samples)
+}
 
 
 generate_posterior_mean <- function(fit, sample_size){
@@ -263,69 +352,6 @@ generate_posterior_mean <- function(fit, sample_size){
 }
 
 
-
-#fit_beta_MLE <- function(data_to_fit){
-#
-#    samples <- data_to_fit$theta
-#    # Fit a beta distribution to the sample data using MLE
-#    fit <- fitdist(samples, "beta")
-#
-#}
-
-plot_region_projection_dist <- function(beta_dists, relative_count_df, plot_path){
-    #beta_dists_sub <- beta_dists %>% 
-    #    slice_sample(n = 1000000)
-    
-    plotting_colors <- generate_plotting_colors()
-
-    # And point out the n highest
-    quants <- beta_dists %>% 
-        group_by(region_reduced, single_projection) %>% 
-        summarize(q2.5 = quantile(samples, c(0.025)))
-    
-    beta_dist_region_projection_plot <- ggplot() + 
-        geom_violin(data = beta_dists, mapping = aes(x = region_reduced, y = samples, fill = single_projection)) + facet_grid(~single_projection) + 
-        geom_point(data = quants, mapping = aes(x = region_reduced, y = q2.5), size = 10, col = "red", shape = "-") + 
-        geom_point(data = relative_count_df, mapping = aes(x = region_reduced, y = relative_count)) + 
-        scale_fill_manual(values = plotting_colors) +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
-        ylim(0,0.2)
-    
-    ggsave(plot_path, beta_dist_region_projection_plot, width = 4000, height = 3000, units = "px")
-}
-
-
-
-
-calculate_log_likelihood <- function(samples, points){
-  log_likelihood <- 0
-
-  for (point in points){
-      d <- density(samples)
-      log_likelihood <- log_likelihood + log((d$y[sum(d$x < point)] + d$y[sum(d$x < point) + 1])/2)
-  }
-
-  return(log_likelihood)
-}
-
-
-estimate_sample_mean_dist_CLT <- function(samples, sample_size){
-    
-    mean_samples <- rnorm(sample_size,mean(samples),sd(samples)/sqrt(length(samples)))
-
-    return(mean_samples)
-}
-
-
-
-estimate_sample_mean_dist_bootstrap <- function(samples, sample_size){
-    
-    samples_resample <- sample(samples, replace = TRUE, size = length(samples)*sample_size)
-
-    mean_samples <- tapply(samples_resample, rep(1:(length(samples_resample)/8), each = 8), mean)
-
-    return(mean_samples)
-}
 
 create_parser <- function(){
     # Input: NA
@@ -371,6 +397,8 @@ main <- function(){
     cat(paste0(utils$current_time()," Loading spatial object from ",spatial_object_path,"\n"))
     spatial_object <- qread(spatial_object_path)
 
+
+    spatial_object$cell_type <- annotate_cell_types(spatial_object)
     # Summary plots
 
     cat(paste0(utils$current_time()," Generating region-projection plots with absolute values\n"))
@@ -396,36 +424,38 @@ main <- function(){
     
     relative_count_df <- calculate_relative_counts(spatial_object@meta.data)
     
+    
     posterior_mean <- data.frame()
     sample_mean_CLT <- data.frame()
     sample_mean_bootstrap <- data.frame()
     
-    regions <- relative_count_df$region_reduced %>% unique()
+
+    cell_type <- relative_count_df$cell_type %>% unique()
     projections <- relative_count_df$single_projection %>% unique()
-    region_projection_pairs <- expand.grid(regions, projections) %>% 
+    region_projection_pairs <- expand.grid(cell_type, projections) %>% 
         filter(Var1 != "Other")
 
     cat(paste0(utils$current_time()," Fitting data using bayesian model and MLE for all region_projection pairs:\n"))
 
     for (row_num in 1:nrow(region_projection_pairs)){
 
-        region <- region_projection_pairs[row_num, "Var1"]
+        cell_type_ <- region_projection_pairs[row_num, "Var1"]
         projection <- region_projection_pairs[row_num, "Var2"]
 
-        data_to_fit <- prepare_data_for_bayesian_model(relative_count_df,region,projection)
+        data_to_fit <- prepare_data_for_bayesian_model(relative_count_df,cell_type_,projection)
 
         if (data_to_fit$M > 1){
             fit_bayesian <- sampling(stan_model, data = data_to_fit, iter = 10000, warmup = 500, chains = 4, verbose = FALSE, refresh = 0)
-            
-            posterior_mean_ <- data.frame(samples = generate_posterior_mean(fit_bayesian, 10000), region_reduced = region, single_projection = projection)
+            beta_dist_samples_bayesian <- marginalise_beta_dist(fit_bayesian, 100)
+
+            posterior_mean_ <- data.frame(samples = generate_posterior_mean(fit_bayesian, 10000), cell_type = cell_type_, single_projection = projection)
             posterior_mean <- rbind(posterior_mean, posterior_mean_)
 
-            sample_mean_CLT_ <- data.frame(samples = estimate_sample_mean_dist_CLT(data_to_fit$theta, 10000), region_reduced = region, single_projection = projection)
+            sample_mean_CLT_ <- data.frame(samples = estimate_sample_mean_dist_CLT(data_to_fit$theta, 10000), cell_type = cell_type_, single_projection = projection)
             sample_mean_CLT <- rbind(sample_mean_CLT, sample_mean_CLT_)
 
-            sample_mean_bootstrap_ <- data.frame(samples = estimate_sample_mean_dist_bootstrap(data_to_fit$theta, 10000), region_reduced = region, single_projection = projection)
+            sample_mean_bootstrap_ <- data.frame(samples = estimate_sample_mean_dist_bootstrap(data_to_fit$theta, 10000), cell_type = cell_type_, single_projection = projection)
             sample_mean_bootstrap <- rbind(sample_mean_bootstrap, sample_mean_bootstrap_)
-
         }
 
         utils$loop_progress(row_num, nrow(region_projection_pairs))
@@ -433,13 +463,13 @@ main <- function(){
     }
 
     cat(paste0(utils$current_time()," Generating region-projection plot on bayesian model fit\n"))
-    plot_region_projection_dist(posterior_mean, relative_count_df, paste0(path_to_plot_folder,"/region_projection_plot_bayesian.png"))
+    plot_region_projection_dist(posterior_mean, relative_count_df, paste0(path_to_plot_folder,"/cell_type_projection_plot_bayesian.png"))
 
     cat(paste0(utils$current_time()," Generating region-projection plot on CLT method\n"))
-    plot_region_projection_dist(sample_mean_CLT, relative_count_df, paste0(path_to_plot_folder,"/region_projection_plot_CLT.png"))
+    plot_region_projection_dist(sample_mean_CLT, relative_count_df, paste0(path_to_plot_folder,"/cell_type_projection_plot_CLT.png"))
 
     cat(paste0(utils$current_time()," Generating region-projection plot on bootstrap method\n"))
-    plot_region_projection_dist(sample_mean_bootstrap, relative_count_df, paste0(path_to_plot_folder,"/region_projection_plot_bootstrap.png"))
+    plot_region_projection_dist(sample_mean_bootstrap, relative_count_df, paste0(path_to_plot_folder,"/cell_type_projection_plot_bootstrap.png"))
 
 }
 

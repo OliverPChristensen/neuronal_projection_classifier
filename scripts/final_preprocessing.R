@@ -331,7 +331,7 @@ correct_region_names <- function(region_names){
 
     # Correct all region names for typos
     region_names <- case_when(
-        region_names == 'dorsal_hyothalamus' ~ 'dorsal_hypothalamus',
+        region_names == 'dorsal_hyothalamus' ~ 'dorsal',
         region_names == 'anterior_hyopthalamus_left' ~ 'anterior_hypothalamus_left',
         region_names == 'interpeduncular' ~ 'interpreduncular',
         region_names == 'lateral_hypothalamus_right-1' ~ 'lateral_hypothalamus_right',
@@ -339,10 +339,29 @@ correct_region_names <- function(region_names){
         region_names == 'retrochiasmaric_left' ~ 'retrochiasmatic_left',
         region_names == 'suprachiamsatic' ~ 'suprachiasmatic',
         region_names == 'dorsomedial_hypothalamus' ~ 'dorsomedial',
+        region_names == 'dorsal_hypothalamus' ~ 'dorsal',
         TRUE ~ region_names
     )
 
+    names(region_names) <- NULL
+
     return(region_names)
+}
+
+is_in_injection_site <- function(meta_data){
+    # Name injection site cells for "injection_site"? Nah just focus on selected regions only
+
+    in_injection_site <- case_when(
+        str_detect(meta_data$region_corrected, "right") & meta_data$run_index == "spatial2" ~ TRUE,
+        meta_data$region_corrected == "dorsomedial" & meta_data$run_index == "spatial2" ~ TRUE,
+        meta_data$region_corrected == "dorsal" & meta_data$run_index == "spatial2" ~ TRUE,
+        meta_data$region_corrected == "ventromedial" & meta_data$run_index == "spatial2" ~ TRUE,
+        TRUE ~ FALSE
+    )
+
+    names(in_injection_site) <- NULL
+
+    return(in_injection_site)
 }
 
 reduce_regions <- function(meta_data){
@@ -355,10 +374,11 @@ reduce_regions <- function(meta_data){
 
     # Set lateral_hypothalamus_right from spatial2 to "Other" and extracts arcuate|ventromedial|dorsomedial|lateral_hypothalamus with removed left/right suffix
     regions_reduced <- case_when(
-        meta_data$region_corrected == "lateral_hypothalamus_right" & meta_data$run_index == "spatial2" ~ "Other",
         str_detect(meta_data$region_corrected, "arcuate|ventromedial|dorsomedial|lateral_hypothalamus") ~ gsub("_right|_left", "", meta_data$region_corrected),
         TRUE ~ "Other"
     )
+
+    names(regions_reduced) <- NULL
     
     return(regions_reduced)
 }
@@ -400,7 +420,7 @@ extract_single_projections <- function(meta_data){
     # Output: Character vector with single projections
 
     single_projection <- case_when(
-        meta_data$projection %in% c("BST", "PAG", "LHA", "PBN", "PVT", "CEA") ~ meta_data$projection,
+        meta_data$projection_fdr %in% c("BST", "PAG", "LHA", "PBN", "PVT", "CEA") ~ meta_data$projection_fdr,
         TRUE ~ "Other"
     )
 
@@ -416,7 +436,7 @@ add_sun1_vs_virus <- function(meta_data, virus1, virus2){
 
     sun1_vs_virus <- case_when(
         meta_data$region_corrected == "lateral_hypothalamus_right" & meta_data$run_index == "spatial2" ~ "Other",
-        (meta_data$sun1 == TRUE) & !(virus1 < 0.05 | virus2 < 0.05)~ "Sun1",
+        (meta_data$sun1 == TRUE) & !(virus1 < 0.05 | virus2 < 0.05) ~ "Sun1",
         !(meta_data$sun1 == TRUE) & (virus1 < 0.05 | virus2 < 0.05) ~ "Virus",
         (meta_data$sun1 == TRUE) & (virus1 < 0.05 | virus2 < 0.05) ~ "Sun1_Virus",
         TRUE ~ "Other"
@@ -545,6 +565,8 @@ main <- function(){
     # Genrate corrected and reduced region names for spatial object
     cat(paste0(utils$current_time()," Correcting and reducing region names\n"))
     spatial_object$region_corrected <- correct_region_names(spatial_object$region)
+    
+    spatial_object$in_injection_site <- is_in_injection_site(spatial_object@meta.data)
     spatial_object$region_reduced <- reduce_regions(spatial_object@meta.data)
 
     # Generate and save UMAPs with corrected and reduced region names

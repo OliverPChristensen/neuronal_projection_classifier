@@ -11,7 +11,7 @@
 cd /projects/cbmr_shared/people/wqc597/neuronal_projection_classifier
 source activate_project_neuronal_projection_classifier
 
-snakemake -s scripts/project_pipeline.snakefile -j 30 --latency-wait 60 -R spatial_cluster_analysis create_shiny_data
+snakemake -s scripts/project_pipeline.snakefile -j 30 --latency-wait 60 -R spatial_clustering_analysis -U spatial_clustering_analysis
 
 
 pid=$!
